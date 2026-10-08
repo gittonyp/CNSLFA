@@ -1,0 +1,6 @@
+# deps / build / runtime — never commit
+node_modules/
+dist/
+*.log
+.env
+.DS_Store
