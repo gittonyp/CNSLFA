@@ -22,6 +22,6 @@ $('go').onclick=async()=>{
   localStorage.setItem('pq_sid',j.sid);localStorage.setItem('pq_name',j.name);
   localStorage.setItem('pq_did',j.did);localStorage.setItem('pq_key',j.secret_key);
   if(!localStorage.getItem('pq_ctr_'+j.sid+'_'+j.did))localStorage.setItem('pq_ctr_'+j.sid+'_'+j.did,'0');
-  $('out').innerHTML='<span class="pill live">● Device Enrolled</span><div class="mono" style="margin-top:8px">sid: '+j.sid+'<br>name: '+j.name+'<br>did: '+j.did+'<br>key fingerprint (SHA-256[0:12]): '+j.key_fp+'<br><br><a style="color:#38e1ff" href="/student">→ Open My QR</a></div>';
+  $('out').innerHTML='<span class="pill live">● Device Enrolled</span><div class="mono" style="margin-top:8px">sid: '+j.sid+'<br>name: '+j.name+'<br>did: '+j.did+'<br>key fingerprint (SHA-256[0:12]): '+j.key_fp+'<br><br><a style="color:#1976d2" href="/student">→ Open My QR</a></div>';
 };
 </script></div></body></html>

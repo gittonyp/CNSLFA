@@ -1,25 +1,54 @@
-:root{--bg:#05070f;--card:rgba(255,255,255,.045);--line:rgba(255,255,255,.1);--txt:#e8eefc;--dim:#93a0b8;--grn:#22e58a;--red:#ff5470;--amb:#ffb020;--cyn:#38e1ff;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(1000px 500px at 20% -10%,#0b1b33,transparent),radial-gradient(900px 500px at 90% 0%,#101b3a,transparent),var(--bg);color:var(--txt);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;min-height:100vh}
-.wrap{max-width:1060px;margin:0 auto;padding:28px 18px 60px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;backdrop-filter:blur(8px);box-shadow:0 10px 40px rgba(0,0,0,.35)}
+/* Material-style light theme (hand-rolled, zero build).
+   Follows MUI v5 light defaults: Roboto, Paper cards, contained buttons,
+   outlined inputs, chips. Class names unchanged so all pages restyle as-is. */
+:root{
+  --bg:#f1f3f4; --paper:#ffffff;
+  --pri:#1976d2; --pri-dark:#1565c0;
+  --grn:#2e7d32; --grn-bg:#e6f4ea;
+  --red:#d32f2f; --red-bg:#fce8e6;
+  --amb:#ed6c02; --amb-bg:#fef7e0;
+  --txt:rgba(0,0,0,.87); --dim:rgba(0,0,0,.6); --line:rgba(0,0,0,.23);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --e2:0px 3px 1px -2px rgba(0,0,0,.2),0px 2px 2px 0 rgba(0,0,0,.14),0px 1px 5px 0 rgba(0,0,0,.12);
+  --e4:0px 2px 4px -1px rgba(0,0,0,.2),0px 4px 5px 0 rgba(0,0,0,.14),0px 1px 10px 0 rgba(0,0,0,.12);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:Roboto,system-ui,Segoe UI,Arial,sans-serif;min-height:100vh}
+.wrap{max-width:1060px;margin:0 auto;padding:0 18px 60px}
+/* App bar */
+.brand{margin:0 -18px 20px;padding:14px 18px;background:var(--pri);color:#fff;font-weight:500;letter-spacing:2px;box-shadow:var(--e4);position:sticky;top:0;z-index:10}
+h1{font-size:24px;font-weight:400;margin:6px 0 4px}
+h2{font-size:18px;font-weight:500;margin:0 0 10px}
+.tag{color:var(--pri-dark);font-style:italic}
+/* Paper card */
+.card{background:var(--paper);border-radius:12px;padding:20px;box-shadow:var(--e2);margin-bottom:14px}
 .grid{display:grid;gap:14px}.g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.g3{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
-h1{font-size:34px;margin:6px 0 4px;letter-spacing:.5px}h2{font-size:20px;margin:0 0 10px}.tag{color:var(--cyn);font-style:italic;color:#9be9ff}
-.brand{font-weight:800;letter-spacing:3px;color:var(--cyn)}
-.btn{display:inline-block;background:linear-gradient(180deg,#12325e,#0c2140);border:1px solid #2b5c9e;color:#fff;padding:11px 16px;border-radius:10px;cursor:pointer;font-weight:700;text-decoration:none}
-.btn:hover{filter:brightness(1.2)}.btn.ghost{background:transparent}.btn.danger{border-color:var(--red)}.btn.ok{border-color:var(--grn)}
-input,select,textarea{width:100%;background:#0a1122;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:15px}
+/* Contained button */
+.btn{display:inline-block;background:var(--pri);color:#fff;border:0;padding:10px 18px;border-radius:4px;cursor:pointer;
+  font-weight:500;font-size:14px;letter-spacing:.5px;text-transform:uppercase;text-decoration:none;box-shadow:var(--e2)}
+.btn:hover{background:var(--pri-dark);box-shadow:var(--e4)}
+.btn.ghost{background:transparent;color:var(--pri);box-shadow:none;border:1px solid var(--line)}
+.btn.danger{background:var(--red)}.btn.danger:hover{filter:brightness(.92)}
+.btn.ok{background:var(--grn)}
+/* Outlined text field */
+input,select,textarea{width:100%;background:#fff;border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:12px;font-size:15px}
+input:focus,select:focus,textarea:focus{outline:none;border:2px solid var(--pri);padding:11px}
 label{font-size:13px;color:var(--dim);display:block;margin:12px 0 6px}
-.mono{font-family:var(--mono);font-size:12.5px;word-break:break-all;background:#070c1a;border:1px solid var(--line);border-radius:10px;padding:10px}
-.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid var(--line)}
+.mono{font-family:var(--mono);font-size:12.5px;word-break:break-all;background:#f5f5f5;border:1px solid #e0e0e0;border-radius:4px;padding:10px;color:var(--txt)}
+.mono a{color:var(--pri)}
+/* Chip */
+.pill{display:inline-block;padding:4px 12px;border-radius:16px;font-size:12px;font-weight:500;background:#e0e0e0;color:var(--txt)}
+.pill.live{background:var(--grn-bg);color:var(--grn)}
+.pill.bad,.pill.warn{color:var(--txt)}
 .live{color:var(--grn)}.warn{color:var(--amb)}.bad{color:var(--red)}.dim{color:var(--dim)}
-#qr{display:flex;justify-content:center;background:#fff;border-radius:14px;padding:14px;margin:12px 0}
+#qr{display:flex;justify-content:center;background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:14px;margin:12px 0}
 #qr img,#qr canvas{width:260px!important;height:260px!important}
-.ring{width:54px;height:54px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:3px solid var(--cyn);font-weight:800}
+.ring{width:54px;height:54px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:3px solid var(--pri);font-weight:500;color:var(--pri)}
 .feed{max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:8px}
-.row{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:rgba(0,0,0,.25)}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid #e0e0e0;border-radius:4px;padding:8px 10px;background:#fff}
 .ok-b{border-left:4px solid var(--grn)}.bad-b{border-left:4px solid var(--red)}.warn-b{border-left:4px solid var(--amb)}
 .nav{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
-.nav a{color:var(--cyn);text-decoration:none;border:1px solid var(--line);padding:8px 12px;border-radius:10px;background:rgba(56,225,255,.06)}
+.nav a{color:var(--pri);text-decoration:none;border:1px solid var(--line);padding:8px 14px;border-radius:4px;background:#fff;font-size:14px;font-weight:500;text-transform:uppercase;box-shadow:var(--e2)}
 pre{white-space:pre-wrap}
-video{width:100%;border-radius:12px;background:#000}
-@media(max-width:640px){h1{font-size:26px}#qr img,#qr canvas{width:220px!important;height:220px!important}}
+video{width:100%;border-radius:8px;background:#000}
+@media(max-width:640px){h1{font-size:22px}#qr img,#qr canvas{width:220px!important;height:220px!important}}

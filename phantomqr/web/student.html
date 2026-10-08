@@ -1,16 +1,19 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>My QR — PhantomQR</title><link rel="stylesheet" href="/web/style.css">
-<script src="/web/qrcode.min.js"></script></head>
+<script src="/web/qrcode.min.js"></script>
+<script src="/web/sha256.min.js"></script></head>
 <body><div class="wrap">
 <div class="brand">PHANTOMQR</div><h1>Secure Student Identity</h1>
 <div class="nav"><a href="/">Home</a><a href="/student/enroll">Enroll</a><a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a></div>
 <div class="card">
-<div id="who" class="dim">Not enrolled. <a style="color:#38e1ff" href="/student/enroll">Enroll first</a>.</div>
+<div id="who" class="dim">Not enrolled. <a style="color:#1976d2" href="/student/enroll">Enroll first</a>.</div>
 <div id="box" style="display:none">
 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
 <div><b id="nm"></b><br><span class="dim" id="ids"></span></div>
 <span class="pill live">● Device Enrolled</span><span class="pill">● <span id="tstat">LIVE</span></span>
 </div>
+<div class="dim" id="backend" style="margin-top:6px"></div>
+<div id="err" class="bad" style="display:none;margin-top:8px"></div>
 <h2 style="margin-top:14px">YOUR AUTHENTICATION TOKEN</h2>
 <div id="qr"></div>
 <div style="display:flex;gap:12px;align-items:center"><span class="ring" id="cd">15</span>
@@ -24,36 +27,63 @@
 <script>
 // Token: {sid,did,ctr,ts,nonce,mac}; canonical sid|did|ctr|ts|nonce.
 // ts=freshness, ctr=monotonic ordering (catches replays inside the 60s window).
+// NOTE: crypto.subtle only exists in secure contexts (localhost/HTTPS). Over plain
+// HTTP via LAN IP (the normal phone-demo setup) we fall back to the vendored
+// pure-JS sha256.hmac — same HMAC-SHA256 math, no WebCrypto. Nonce uses
+// getRandomValues, which works in insecure contexts.
 const $=id=>document.getElementById(id);
+function fail(m){const e=$('err');e.style.display='block';e.textContent='⚠ '+m;}
 const sid=localStorage.getItem('pq_sid'),did=localStorage.getItem('pq_did'),
       keyHex=localStorage.getItem('pq_key'),name=localStorage.getItem('pq_name');
-if(!sid||!did||!keyHex){$('who').innerHTML='Not enrolled. <a style="color:#38e1ff" href="/student/enroll">Enroll first</a>.';}
-else{
+if(!sid||!did||!keyHex){
+  $('who').innerHTML='Not enrolled on THIS device/browser (keys live in localStorage). <a style="color:#1976d2" href="/student/enroll">Enroll first</a>.';
+}else{
   $('who').textContent='';$('box').style.display='block';
   $('nm').textContent=name||sid;$('ids').textContent=sid+' · Device '+did;
   const hex2bytes=h=>new Uint8Array(h.match(/../g).map(b=>parseInt(b,16)));
   const b2hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
-  let key;crypto.subtle.importKey('raw',hex2bytes(keyHex),'HMAC',{name:'HMAC',hash:'SHA-256'},false,['sign']).then(k=>key=k);
+  const keyBytes=hex2bytes(keyHex);
+  const useSubtle=!!(window.crypto&&crypto.subtle);
+  $('backend').textContent='crypto backend: '+(useSubtle?'WebCrypto (secure context)':'vendored JS HMAC (insecure context — same HMAC-SHA256 math)');
+  let subtleKey=null;
+  if(useSubtle){crypto.subtle.importKey('raw',keyBytes,'HMAC',{name:'HMAC',hash:'SHA-256'},false,['sign']).then(k=>subtleKey=k).catch(e=>fail('key import: '+e));}
+  async function hmacHex(msg){
+    if(useSubtle){
+      if(!subtleKey)throw new Error('crypto key not ready yet');
+      return b2hex(await crypto.subtle.sign('HMAC',subtleKey,new TextEncoder().encode(msg)));
+    }
+    if(typeof sha256==='undefined'||!sha256.hmac)throw new Error('fallback HMAC lib missing');
+    return sha256.hmac([...keyBytes],msg); // ASCII canonical: encoding-independent
+  }
   const ck='pq_ctr_'+sid+'_'+did;
-  let left=0,qr=null;
+  let left=0,started=false;
   async function fresh(){
-    let ctr=parseInt(localStorage.getItem(ck)||'0',10)+1;
-    localStorage.setItem(ck,String(ctr));
-    const ts=Math.floor(Date.now()/1000);
-    const nonce=b2hex(crypto.getRandomValues(new Uint8Array(16)));
-    const canon=[sid,did,ctr,ts,nonce].join('|');
-    const mac=b2hex(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(canon)));
-    const tok={sid,did,ctr,ts,nonce,mac};
-    const s=JSON.stringify(tok);
-    $('qr').innerHTML='';qr=new QRCode($('qr'),{text:s,width:260,height:260,correctLevel:QRCode.CorrectLevel.M});
-    $('tok').textContent=s;$('ctr').textContent=ctr;left=15;
-    window._lastToken=tok;
+    try{
+      if(!window.crypto||!crypto.getRandomValues)throw new Error('no secure randomness on this browser');
+      const ctr=parseInt(localStorage.getItem(ck)||'0',10)+1;
+      localStorage.setItem(ck,String(ctr));
+      const ts=Math.floor(Date.now()/1000);
+      const nonce=b2hex(crypto.getRandomValues(new Uint8Array(16)));
+      const canon=[sid,did,ctr,ts,nonce].join('|');
+      const mac=await hmacHex(canon);
+      const tok={sid,did,ctr,ts,nonce,mac};
+      const s=JSON.stringify(tok);
+      try{
+        $('qr').innerHTML='';
+        new QRCode($('qr'),{text:s,width:260,height:260,correctLevel:QRCode.CorrectLevel.M});
+      }catch(e){throw new Error('QR render failed: '+e.message);}
+      $('tok').textContent=s;$('ctr').textContent=ctr;left=15;
+      $('err').style.display='none';
+      window._lastToken=tok;
+    }catch(e){fail(e.message||e);}
   }
   $('dbg').onclick=async()=>{
-    const h=await crypto.subtle.digest('SHA-256',hex2bytes(keyHex));
-    $('fp').style.display='block';$('fp').textContent='key fp: '+b2hex(h).slice(0,12)+'  (full key never displayed)';
+    try{
+      const fp=useSubtle?b2hex(await crypto.subtle.digest('SHA-256',keyBytes)).slice(0,12):sha256([...keyBytes]).slice(0,12);
+      $('fp').style.display='block';$('fp').textContent='key fp: '+fp+'  (full key never displayed)';
+    }catch(e){fail('fingerprint: '+(e.message||e));}
   };
-  setInterval(()=>{left--;if(left<=0){fresh();return;}$('cd').textContent=left;$('cd2').textContent=left;},1000);
-  const iv=setInterval(()=>{if(key){clearInterval(iv);fresh();}},200);
+  setInterval(()=>{if(!started)return;left--;if(left<=0){fresh();return;}$('cd').textContent=left;$('cd2').textContent=left;},1000);
+  const iv=setInterval(()=>{if(useSubtle&&!subtleKey)return;clearInterval(iv);started=true;fresh();},200);
 }
 </script></div></body></html>

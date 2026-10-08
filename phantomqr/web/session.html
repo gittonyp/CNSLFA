@@ -19,6 +19,6 @@ $('go').onclick=async()=>{
   const j=await r.json();
   if(!r.ok){$('out').innerHTML='<span class="bad">'+JSON.stringify(j)+'</span>';return;}
   localStorage.setItem('pq_session',j.session_id);
-  $('out').innerHTML='<span class="pill live">● Session '+j.session_id+' OPEN</span><div class="mono" style="margin-top:8px">session_id: '+j.session_id+'<br><a style="color:#38e1ff" href="/staff/scanner">→ Open scanner</a></div>';
+  $('out').innerHTML='<span class="pill live">● Session '+j.session_id+' OPEN</span><div class="mono" style="margin-top:8px">session_id: '+j.session_id+'<br><a style="color:#1976d2" href="/staff/scanner">→ Open scanner</a></div>';
 };
 </script></div></body></html>
