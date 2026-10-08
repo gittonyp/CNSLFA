@@ -1,30 +1,56 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1976d2">
-<title>PhantomQR — Secure Classroom Authentication</title><link rel="stylesheet" href="/web/style.css"></head>
+<meta name="theme-color" content="#ffffff">
+<title>phantomqr</title><link rel="stylesheet" href="/web/style.css"></head>
 <body><div class="wrap">
-<div class="brand">PHANTOMQR</div>
-<h1>Cryptographically Secure<br>Classroom Authentication</h1>
-<p class="tag">"Possession of the QR is not possession of the identity."</p>
-<div class="card"><h2>Architecture — the direction flip</h2>
-<pre class="mono">STUDENT (holds per-device key)
-  ↓  dynamic signed QR every 15s  {sid,did,ctr,ts,nonce,mac}
-PROFESSOR SCANNER (dumb camera, staff login only)
-  ↓  POST /api/attendance/scan {token, session_id, staff_session}
-SERVER (verifies HMAC, session, ts, counter, nonce, uniqueness)
-  ↓
-ATTENDANCE (ACCEPTED / blocked with reason)</pre>
-<p class="dim">Student never submits attendance. Professor device is the only writer. Server never trusts client time.</p></div>
-<div class="grid g3" style="margin-top:14px">
-<div class="card"><h2>✓ HMAC-SHA256</h2><p class="dim">Per-device 32-byte key. Constant-time compare. Tamper-evident.</p></div>
-<div class="card"><h2>✓ Dynamic QR</h2><p class="dim">15s rotation, 60s server validity. Screenshot dies fast.</p></div>
-<div class="card"><h2>✓ Replay protection</h2><p class="dim">Monotonic counter + once-only nonce + UNIQUE(sid,session).</p></div>
-<div class="card"><h2>✓ Tamper detection</h2><p class="dim">sid/did/ctr/ts/nonce covered by MAC. Edit anything → INVALID_MAC.</p></div>
-<div class="card"><h2>✓ Staff-only submission</h2><p class="dim">Anonymous POST rejected. Remote student at home has nothing to call.</p></div>
-<div class="card"><h2>✓ Offline queue</h2><p class="dim">Scanner queues scans in localStorage, auto-uploads on reconnect.</p></div>
+<div class="brand">phantomqr</div>
+<div class="phead">
+<div class="av"><div>PQ</div></div>
+<div class="pstats">
+<div><b id="stPresent">0</b><span>present</span></div>
+<div><b id="stStudents">0</b><span>students</span></div>
+<div><b id="stBlocked">0</b><span>blocked</span></div>
 </div>
-<div class="nav">
-<a href="/student/enroll">Student Portal</a><a href="/staff/login">Staff Console</a>
-<a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a><a href="/attacks">Security Lab</a>
 </div>
-<p class="dim">Demo login — Staff ID <b>ST04</b> / password <b>demo123</b>. Prototype: browser key storage is NOT hardware-backed (see README).</p>
-</div></body></html>
+<div class="bio"><b>PhantomQR · Secure Classroom Auth</b>
+<span class="dim">Possession of the QR is not possession of the identity.</span><br>
+Student shows a rotating signed QR · professor scans · server verifies.
+</div>
+<div class="prow">
+<a class="btn" href="/staff/scanner">Open Scanner</a>
+<a class="btn ghost" href="/dashboard">Activity</a>
+</div>
+<div class="hls">
+<div class="hl"><div class="av"><div>H</div></div><span>HMAC</span></div>
+<div class="hl"><div class="av"><div>15s</div></div><span>Rotates</span></div>
+<div class="hl"><div class="av"><div>R</div></div><span>No replay</span></div>
+<div class="hl"><div class="av"><div>T</div></div><span>Tamper-proof</span></div>
+<div class="hl"><div class="av"><div>S</div></div><span>Staff-only</span></div>
+<div class="hl"><div class="av"><div>O</div></div><span>Offline</span></div>
+</div>
+<div class="posts">
+<a class="post" style="background:linear-gradient(135deg,#1976d2,#38e1ff)" href="/student/enroll">Enroll<small>join in seconds</small></a>
+<a class="post" style="background:linear-gradient(135deg,#6228d7,#ee2a7b)" href="/student">My QR<small>rotating token</small></a>
+<a class="post" style="background:linear-gradient(135deg,#2e7d32,#66bb6a)" href="/staff/scanner">Scan<small>professor cam</small></a>
+<a class="post" style="background:linear-gradient(135deg,#ed6c02,#f9ce34)" href="/dashboard">Activity<small>live feed</small></a>
+<a class="post" style="background:linear-gradient(135deg,#d32f2f,#ff8a65)" href="/attacks">Attacks<small>watch them fail</small></a>
+<a class="post" style="background:linear-gradient(135deg,#37474f,#90a4ae)" href="/staff/login">Staff<small>ST04 login</small></a>
+</div>
+</div>
+<nav class="tabbar">
+<a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
+<a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
+<a href="/staff/scanner" data-p="/staff/scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg><span>Scan</span></a>
+<a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
+<a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
+</nav>
+<script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
+(async()=>{
+  try{
+    const r=await fetch('/api/dashboard');const j=await r.json();
+    document.getElementById('stPresent').textContent=j.present||0;
+    document.getElementById('stStudents').textContent=j.expected||0;
+    document.getElementById('stBlocked').textContent=(j.replays||0)+(j.tampering||0)+(j.unauth||0);
+  }catch(e){}
+})();
+</script></div></body></html>

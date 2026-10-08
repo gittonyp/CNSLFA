@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,10 +23,10 @@ type Token struct {
 }
 
 type ScanReq struct {
-	Token            Token  `json:"token"`
-	SessionID        string `json:"session_id"`
-	StaffSessionTok  string `json:"staff_session_token"`
-	ScannedAt        int64  `json:"scanned_at"` // scanner-reported; NOT trusted for validity
+	Token           Token  `json:"token"`
+	SessionID       string `json:"session_id"`
+	StaffSessionTok string `json:"staff_session_token"`
+	ScannedAt       int64  `json:"scanned_at"` // scanner-reported; NOT trusted for validity
 }
 
 const (
@@ -151,7 +152,7 @@ func verifyScan(db *sql.DB, r ScanReq) (int, string, string, string) {
 	if _, err := tx.Exec(`UPDATE devices SET last_seen_counter=? WHERE did=?`, t.Ctr, t.DID); err != nil {
 		return 500, "ERROR", "Server busy, retry", sid
 	}
- t0 := time.Now()
+	t0 := time.Now()
 	_ = t0
 	if err := tx.Commit(); err != nil {
 		return 500, "ERROR", "Server busy, retry", sid
@@ -210,6 +211,12 @@ func handleStaffLogin(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 405, map[string]any{"error": "POST only"})
 		return
 	}
+	ip := clientIP(r)
+	if !loginAllowed(ip) {
+		logEvent(db, "INVALID_STAFF", "", "", "rate-limited login from "+ip)
+		writeJSON(w, 429, map[string]any{"ok": false, "error": "too many attempts, try again in a minute"})
+		return
+	}
 	var in struct {
 		StaffID  string `json:"staff_id"`
 		Password string `json:"password"`
@@ -220,20 +227,87 @@ func handleStaffLogin(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	var want string
 	if err := db.QueryRow(`SELECT password_hash FROM staff WHERE staff_id=?`, strings.TrimSpace(in.StaffID)).Scan(&want); err != nil {
+		loginFailed(ip)
 		logEvent(db, "INVALID_STAFF", "", "", "bad staff_id")
 		writeJSON(w, 401, map[string]any{"ok": false, "error": "invalid credentials"})
 		return
 	}
-	if subtleCompare(want, hashPassword(in.Password)) != true {
+	ok, migrate := checkPassword(want, in.Password)
+	if !ok {
+		loginFailed(ip)
 		logEvent(db, "INVALID_STAFF", "", "", "bad password")
 		writeJSON(w, 401, map[string]any{"ok": false, "error": "invalid credentials"})
 		return
 	}
+	if migrate {
+		// Transparent upgrade: old SHA-256 hash -> bcrypt on successful login.
+		if h, err := hashPassword(in.Password); err == nil {
+			_, _ = db.Exec(`UPDATE staff SET password_hash=? WHERE staff_id=?`, h, strings.TrimSpace(in.StaffID))
+		}
+	}
+	loginOK(ip)
 	tok, _ := RandomHex(32)
 	now := time.Now().Unix()
 	_, _ = db.Exec(`INSERT INTO staff_sessions(token,staff_id,device_id,created_at,expires_at) VALUES(?,?,?,?,?)`,
 		tok, strings.TrimSpace(in.StaffID), "staff-device-04", now, now+8*3600)
-	writeJSON(w, 200, map[string]any{"ok": true, "staff_session_token": tok, "staff_id": strings.TrimSpace(in.StaffID), "device_id": "staff-device-04"})
+	writeJSON(w, 200, map[string]any{"ok": true, "staff_session_token": tok, "staff_id": strings.TrimSpace(in.StaffID), "device_id": "staff-device-04", "expires_in": 8 * 3600})
+}
+
+func handleStaffLogout(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Staff string `json:"staff_session_token"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	if in.Staff == "" {
+		in.Staff = r.URL.Query().Get("staff_session_token")
+	}
+	_, _ = db.Exec(`DELETE FROM staff_sessions WHERE token=?`, in.Staff)
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+func handleStaffMe(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+	tok := r.URL.Query().Get("staff_session_token")
+	staffID, devID, ok := staffOf(db, tok)
+	if !ok {
+		writeJSON(w, 401, map[string]any{"ok": false})
+		return
+	}
+	var exp int64
+	_ = db.QueryRow(`SELECT expires_at FROM staff_sessions WHERE token=?`, tok).Scan(&exp)
+	writeJSON(w, 200, map[string]any{"ok": true, "staff_id": staffID, "device_id": devID, "expires_at": exp})
+}
+
+// handleAdminReset wipes demo attendance data (staff-only) so each demo run
+// starts clean. Students, devices, keys and sessions are kept.
+func handleAdminReset(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, 405, map[string]any{"error": "POST only"})
+		return
+	}
+	var in struct {
+		Staff string `json:"staff_session_token"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	if _, _, ok := staffOf(db, in.Staff); !ok {
+		writeJSON(w, 401, map[string]any{"error": "staff login required"})
+		return
+	}
+	var a, n, e int64
+	ra, _ := db.Exec(`DELETE FROM attendance`)
+	rn, _ := db.Exec(`DELETE FROM nonces`)
+	re, _ := db.Exec(`DELETE FROM security_events`)
+	_, _ = db.Exec(`UPDATE devices SET last_seen_counter=0`)
+	if ra != nil {
+		a, _ = ra.RowsAffected()
+	}
+	if rn != nil {
+		n, _ = rn.RowsAffected()
+	}
+	if re != nil {
+		e, _ = re.RowsAffected()
+	}
+	logEvent(db, "RESET", "", "", "demo data reset")
+	writeJSON(w, 200, map[string]any{"ok": true, "cleared": map[string]int64{"attendance": a, "nonces": n, "events": e}})
 }
 
 func handleSessionOpen(db *sql.DB, w http.ResponseWriter, r *http.Request) {
@@ -352,12 +426,12 @@ func handleDashboard(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{
 		"session": sessionID, "course": course, "room": room, "status": status,
-		"present": present, "expected": expected, "pending": max0(expected-present),
-		"replays":   count("REPLAY_NONCE") + count("REPLAY_COUNTER"),
-		"tampering": count("INVALID_MAC"),
+		"present": present, "expected": expected, "pending": max0(expected - present),
+		"replays":        count("REPLAY_NONCE") + count("REPLAY_COUNTER"),
+		"tampering":      count("INVALID_MAC"),
 		"invalidDevices": count("UNKNOWN_DEVICE") + count("UNKNOWN_STUDENT"),
-		"unauth":    count("INVALID_STAFF"),
-		"feed":      feed, "attendance": att,
+		"unauth":         count("INVALID_STAFF"),
+		"feed":           feed, "attendance": att,
 	})
 }
 
@@ -366,4 +440,63 @@ func max0(n int) int {
 		return 0
 	}
 	return n
+}
+
+// ---- login hardening: per-IP attempt limiting (10 fails / 5 min -> 60s block) ----
+
+var loginRL = struct {
+	sync.Mutex
+	m map[string]*rlEntry
+}{m: map[string]*rlEntry{}}
+
+type rlEntry struct {
+	fails        int
+	windowStart  time.Time
+	blockedUntil time.Time
+}
+
+func clientIP(r *http.Request) string {
+	h := r.RemoteAddr
+	if i := strings.LastIndex(h, ":"); i >= 0 {
+		h = h[:i]
+	}
+	return strings.Trim(h, "[]")
+}
+
+func loginAllowed(ip string) bool {
+	loginRL.Lock()
+	defer loginRL.Unlock()
+	e, ok := loginRL.m[ip]
+	if !ok {
+		return true
+	}
+	now := time.Now()
+	if now.Before(e.blockedUntil) {
+		return false
+	}
+	if now.Sub(e.windowStart) > 5*time.Minute {
+		delete(loginRL.m, ip)
+	}
+	return true
+}
+
+func loginFailed(ip string) {
+	loginRL.Lock()
+	defer loginRL.Unlock()
+	now := time.Now()
+	e, ok := loginRL.m[ip]
+	if !ok || now.Sub(e.windowStart) > 5*time.Minute {
+		e = &rlEntry{windowStart: now}
+		loginRL.m[ip] = e
+	}
+	e.fails++
+	if e.fails >= 10 {
+		e.blockedUntil = now.Add(time.Minute)
+	}
+}
+
+func loginOK(ip string) {
+	loginRL.Lock()
+	defer loginRL.Unlock()
+	delete(loginRL.m, ip)
 }

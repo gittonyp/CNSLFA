@@ -117,6 +117,6 @@ second student, concurrent duplicate race.
 4. Offline-queue `scanned_at` is scanner-reported, not trusted.
 5. HMAC = integrity/authentication, **no non-repudiation** (server knows the key too). Ed25519 + secure enclave is the upgrade path.
 6. Payload is signed, not encrypted (opaque `did`/short sid preferred over real roll numbers).
-7. Demo password hashing is salted SHA-256 (prototype); production needs bcrypt/argon2.
+7. Staff passwords are bcrypt-hashed (cost 10, per-password salt); legacy SHA-256 demo DBs auto-upgrade on next login. Login is per-IP rate-limited (10 fails/5min → 60s block). Staff sessions expire after 8h; `/api/staff/logout` revokes. `/api/admin/reset` (staff-only) wipes attendance for a fresh demo.
 
 Future work: Ed25519 variant with measured µs table, BLE/ultrasonic proximity, Keystore-backed keys, stronger offline trust.

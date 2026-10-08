@@ -6,10 +6,12 @@ package main
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
 
@@ -82,11 +84,33 @@ CREATE TABLE IF NOT EXISTS security_events(
 );
 `
 
-func hashPassword(pw string) string {
-	// Prototype-grade password hashing (salted SHA-256).
-	// Production: bcrypt/scrypt/argon2. Documented in README limitations.
+func hashPassword(pw string) (string, error) {
+	// bcrypt with per-password salt (cost 10). Production-grade for a demo;
+	// argon2id would be the next step up. Never store reversible passwords.
+	h, err := bcrypt.GenerateFromPassword([]byte(pw), 10)
+	if err != nil {
+		return "", err
+	}
+	return string(h), nil
+}
+
+// legacyHash is the old prototype scheme (salted SHA-256). Kept ONLY so
+// databases created before the bcrypt upgrade keep working: a successful
+// legacy login transparently re-hashes to bcrypt (see handlers.go).
+func legacyHash(pw string) string {
 	h := sha256.Sum256([]byte("phantomqr-demo-salt::" + pw))
 	return hex.EncodeToString(h[:])
+}
+
+// checkPassword accepts bcrypt hashes, plus legacy SHA-256 hex (migrate=true).
+func checkPassword(stored, pw string) (ok, migrate bool) {
+	if err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(pw)); err == nil {
+		return true, false
+	}
+	if len(stored) == 64 && subtle.ConstantTimeCompare([]byte(stored), []byte(legacyHash(pw))) == 1 {
+		return true, true
+	}
+	return false, false
 }
 
 func openDB(path string) (*sql.DB, error) {
@@ -106,7 +130,12 @@ func openDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	if n == 0 {
-		_, err = db.Exec(`INSERT INTO staff(staff_id,name,password_hash) VALUES('ST04','Demo Professor',?)`, hashPassword("demo123"))
+		h, err := hashPassword("demo123")
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+		_, err = db.Exec(`INSERT INTO staff(staff_id,name,password_hash) VALUES('ST04','Demo Professor',?)`, h)
 		if err != nil {
 			db.Close()
 			return nil, err

@@ -24,6 +24,9 @@ func main() {
 	// ---- API ----
 	http.HandleFunc("/api/student/enroll", func(w http.ResponseWriter, r *http.Request) { handleEnroll(db, w, r) })
 	http.HandleFunc("/api/staff/login", func(w http.ResponseWriter, r *http.Request) { handleStaffLogin(db, w, r) })
+	http.HandleFunc("/api/staff/logout", func(w http.ResponseWriter, r *http.Request) { handleStaffLogout(db, w, r) })
+	http.HandleFunc("/api/staff/me", func(w http.ResponseWriter, r *http.Request) { handleStaffMe(db, w, r) })
+	http.HandleFunc("/api/admin/reset", func(w http.ResponseWriter, r *http.Request) { handleAdminReset(db, w, r) })
 	http.HandleFunc("/api/session/open", func(w http.ResponseWriter, r *http.Request) { handleSessionOpen(db, w, r) })
 	http.HandleFunc("/api/session/close", func(w http.ResponseWriter, r *http.Request) { handleSessionClose(db, w, r) })
 	http.HandleFunc("/api/attendance/scan", func(w http.ResponseWriter, r *http.Request) { handleScan(db, w, r) })
