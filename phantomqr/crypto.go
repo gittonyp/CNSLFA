@@ -58,3 +58,12 @@ func KeyFingerprint(key []byte) string {
 	h := sha256.Sum256(key)
 	return hex.EncodeToString(h[:])[:12]
 }
+
+// isHex reports whether s is non-empty even-length hex (nonce/MAC shapes).
+func isHex(s string) bool {
+	if s == "" || len(s)%2 != 0 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
+}

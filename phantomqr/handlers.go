@@ -78,17 +78,33 @@ func verifyScan(db *sql.DB, r ScanReq) (int, string, string, string) {
 	}
 	_ = staffID
 
+	// STEP 1b: shape validation — lengths, hex alphabet, positive counter.
+	// This checks format, not meaning: the MAC over these exact bytes is
+	// still verified next, and nothing here is trusted.
+	if t.SID == "" || len(t.SID) > 32 || t.DID == "" || len(t.DID) > 16 ||
+		t.Nonce == "" || len(t.Nonce) > 64 || t.Mac == "" || len(t.Mac) > 128 ||
+		t.Ctr <= 0 || !isHex(t.Nonce) || !isHex(t.Mac) {
+		logEvent(db, "MALFORMED", sid, r.SessionID, "token shape invalid")
+		return 400, "MALFORMED", "REJECTED: malformed QR", sid
+	}
+
 	// STEP 2: session exists.
 	var status, course string
-	err := db.QueryRow(`SELECT status, course FROM attendance_sessions WHERE session_id=?`, r.SessionID).Scan(&status, &course)
+	var created int64
+	err := db.QueryRow(`SELECT status, course, created_at FROM attendance_sessions WHERE session_id=?`, r.SessionID).Scan(&status, &course, &created)
 	if err != nil {
 		logEvent(db, "INVALID_SESSION", sid, r.SessionID, "unknown session_id")
 		return 404, "INVALID_SESSION", "REJECTED: Invalid attendance session", sid
 	}
-	// STEP 3: session OPEN.
+	// STEP 3: session OPEN and fresh. Sessions auto-expire 12h after creation
+	// so a forgotten OPEN session cannot accept scans forever.
 	if status != "OPEN" {
 		logEvent(db, "INVALID_SESSION", sid, r.SessionID, "session status="+status)
 		return 409, "INVALID_SESSION", "REJECTED: Attendance session closed", sid
+	}
+	if time.Now().Unix()-created > 12*3600 {
+		logEvent(db, "INVALID_SESSION", sid, r.SessionID, "session expired (>12h)")
+		return 409, "INVALID_SESSION", "REJECTED: Attendance session expired", sid
 	}
 	// STEP 4-5: look up student + device.
 	var studentExists bool
@@ -190,10 +206,14 @@ func handleEnroll(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "bad JSON"})
 		return
 	}
-	in.SID = strings.TrimSpace(in.SID)
+	in.SID = strings.ToUpper(strings.TrimSpace(in.SID))
 	in.Name = strings.TrimSpace(in.Name)
 	if in.SID == "" || in.Name == "" {
 		writeJSON(w, 400, map[string]any{"error": "sid and name required"})
+		return
+	}
+	if len(in.SID) > 32 || len(in.Name) > 64 {
+		writeJSON(w, 400, map[string]any{"error": "sid (max 32) or name (max 64) too long"})
 		return
 	}
 	// Per-device secret: 32 cryptographically random bytes. Server stores it,
@@ -204,15 +224,28 @@ func handleEnroll(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keyHex := hex.EncodeToString(raw)
-	did, _ := RandomHex(2) // 2 bytes -> 4 hex chars like "d7f3"
 	now := time.Now().Unix()
 	if _, err := db.Exec(`INSERT INTO students(sid,name,created_at) VALUES(?,?,?) ON CONFLICT(sid) DO UPDATE SET name=excluded.name`, in.SID, in.Name, now); err != nil {
 		writeJSON(w, 500, map[string]any{"error": "db error"})
 		return
 	}
-	// One device per enroll call; re-enroll creates a fresh device (old stays unless revoked).
-	if _, err := db.Exec(`INSERT INTO devices(did,sid,secret_key,created_at) VALUES(?,?,?,?)`, did, in.SID, keyHex, now); err != nil {
-		writeJSON(w, 500, map[string]any{"error": "db error: " + err.Error()})
+	// Re-enroll = new phone: revoke all previous devices first, otherwise a lost
+	// or shared old phone keeps a valid key forever.
+	if _, err := db.Exec(`UPDATE devices SET active=0, revoked_at=? WHERE sid=?`, now, in.SID); err != nil {
+		writeJSON(w, 500, map[string]any{"error": "db error"})
+		return
+	}
+	// did is 16-bit; retry on (rare) collision instead of failing the enroll.
+	var did string
+	for i := 0; i < 5; i++ {
+		d, _ := RandomHex(2) // 2 bytes -> 4 hex chars like "d7f3"
+		if _, err := db.Exec(`INSERT INTO devices(did,sid,secret_key,created_at) VALUES(?,?,?,?)`, d, in.SID, keyHex, now); err == nil {
+			did = d
+			break
+		}
+	}
+	if did == "" {
+		writeJSON(w, 500, map[string]any{"error": "could not allocate device id, retry"})
 		return
 	}
 	writeJSON(w, 200, map[string]any{
@@ -280,6 +313,96 @@ func handleStaffLogout(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		in.Staff = r.URL.Query().Get("staff_session_token")
 	}
 	_, _ = db.Exec(`DELETE FROM staff_sessions WHERE token=?`, in.Staff)
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// handleAdminRevoke kills a lost/shared student device. Revoked devices fail
+// closed at verify STEP 6 (UNKNOWN_DEVICE), even with a cryptographically
+// valid token — possession of an old key is not enough.
+func handleAdminRevoke(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, 405, map[string]any{"error": "POST only"})
+		return
+	}
+	var in struct {
+		Staff string `json:"staff_session_token"`
+		DID   string `json:"did"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "bad JSON"})
+		return
+	}
+	if _, _, code, errStatus, msg := requireRole(db, in.Staff, "", "admin"); code != 0 {
+		writeJSON(w, code, map[string]any{"error": msg, "status": errStatus})
+		return
+	}
+	did := strings.TrimSpace(in.DID)
+	if did == "" {
+		writeJSON(w, 400, map[string]any{"error": "did required"})
+		return
+	}
+	res, err := db.Exec(`UPDATE devices SET active=0, revoked_at=? WHERE did=? AND active=1`, time.Now().Unix(), did)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "db error"})
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		writeJSON(w, 404, map[string]any{"error": "unknown device or already revoked"})
+		return
+	}
+	logEvent(db, "DEVICE_REVOKED", "", "", "did="+did)
+	writeJSON(w, 200, map[string]any{"ok": true, "did": did})
+}
+
+// handleStaffPassword lets staff/admin rotate their own password.
+// bcrypt silently truncates past 72 bytes, so length is capped, not just floored.
+func handleStaffPassword(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, 405, map[string]any{"error": "POST only"})
+		return
+	}
+	var in struct {
+		Staff string `json:"staff_session_token"`
+		Old   string `json:"old_password"`
+		New   string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "bad JSON"})
+		return
+	}
+	staffID, _, code, errStatus, msg := requireRole(db, in.Staff, "", "staff", "admin")
+	if code != 0 {
+		writeJSON(w, code, map[string]any{"error": msg, "status": errStatus})
+		return
+	}
+	if len(in.New) < 6 || len(in.New) > 72 {
+		writeJSON(w, 400, map[string]any{"error": "new password must be 6-72 characters"})
+		return
+	}
+	var want string
+	if err := db.QueryRow(`SELECT password_hash FROM staff WHERE staff_id=?`, staffID).Scan(&want); err != nil {
+		writeJSON(w, 500, map[string]any{"error": "db error"})
+		return
+	}
+	if ok, _ := checkPassword(want, in.Old); !ok {
+		loginFailed(clientIP(r))
+		writeJSON(w, 401, map[string]any{"ok": false, "error": "current password incorrect"})
+		return
+	}
+	h, err := hashPassword(in.New)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "hashing failed"})
+		return
+	}
+	if _, err := db.Exec(`UPDATE staff SET password_hash=? WHERE staff_id=?`, h, staffID); err != nil {
+		writeJSON(w, 500, map[string]any{"error": "db error"})
+		return
+	}
+	// Invalidate all other sessions: a password change must kick attackers,
+	// but keep the session it was changed from (else the user is logged out mid-click).
+	_, _ = db.Exec(`DELETE FROM staff_sessions WHERE staff_id=? AND token<>?`, staffID, in.Staff)
+	logEvent(db, "PASSWORD_CHANGED", "", "", "staff="+staffID)
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -354,12 +477,24 @@ func handleSessionOpen(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "course and room required"})
 		return
 	}
-	sid, _ := RandomHex(2)
-	sessionID := "S-" + strings.ToUpper(sid)
+	if len(in.Course) > 64 || len(in.Room) > 64 || len(in.Start) > 16 || len(in.End) > 16 {
+		writeJSON(w, 400, map[string]any{"error": "course/room/start/end too long"})
+		return
+	}
+	// session_id is 16-bit; retry on (rare) collision instead of failing.
+	var sessionID string
 	now := time.Now().Unix()
-	if _, err := db.Exec(`INSERT INTO attendance_sessions(session_id,course,room,staff_id,staff_device_id,start_time,end_time,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-		sessionID, in.Course, in.Room, staffID, devID, in.Start, in.End, "OPEN", now); err != nil {
-		writeJSON(w, 500, map[string]any{"error": "db error"})
+	for i := 0; i < 5; i++ {
+		sid, _ := RandomHex(2)
+		cand := "S-" + strings.ToUpper(sid)
+		if _, err := db.Exec(`INSERT INTO attendance_sessions(session_id,course,room,staff_id,staff_device_id,start_time,end_time,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
+			cand, in.Course, in.Room, staffID, devID, in.Start, in.End, "OPEN", now); err == nil {
+			sessionID = cand
+			break
+		}
+	}
+	if sessionID == "" {
+		writeJSON(w, 500, map[string]any{"error": "could not allocate session id, retry"})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"session_id": sessionID, "status": "OPEN"})
@@ -374,6 +509,19 @@ func handleSessionClose(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	_, _, code, errStatus, msg := requireRole(db, in.Staff, in.SessionID, "staff", "admin")
 	if code != 0 {
 		writeJSON(w, code, map[string]any{"error": msg, "status": errStatus})
+		return
+	}
+	// Only the session owner or an admin may close it — one professor must
+	// not kill another professor's live session.
+	callerID, _, callerRole, _ := staffOf(db, in.Staff)
+	var owner string
+	if err := db.QueryRow(`SELECT staff_id FROM attendance_sessions WHERE session_id=?`, in.SessionID).Scan(&owner); err != nil {
+		writeJSON(w, 404, map[string]any{"error": "unknown session"})
+		return
+	}
+	if callerID != owner && callerRole != "admin" {
+		logEvent(db, "FORBIDDEN", "", in.SessionID, "close by non-owner "+callerID)
+		writeJSON(w, 403, map[string]any{"error": "only the session owner or admin can close it", "status": "FORBIDDEN"})
 		return
 	}
 	_, _ = db.Exec(`UPDATE attendance_sessions SET status='CLOSED' WHERE session_id=?`, in.SessionID)
@@ -417,7 +565,9 @@ func handleDashboard(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		if sessionID == "" {
 			_ = db.QueryRow(`SELECT COUNT(*) FROM security_events WHERE event_type=?`, t).Scan(&n)
 		} else {
-			_ = db.QueryRow(`SELECT COUNT(*) FROM security_events WHERE event_type=? AND (session_id=? OR session_id IS NULL)`, t, sessionID).Scan(&n)
+			// Strict per-session match: session-less events (e.g. bad staff_id
+			// with no session) must not inflate every session's counters.
+			_ = db.QueryRow(`SELECT COUNT(*) FROM security_events WHERE event_type=? AND session_id=?`, t, sessionID).Scan(&n)
 		}
 		return n
 	}
@@ -476,6 +626,21 @@ type rlEntry struct {
 }
 
 func clientIP(r *http.Request) string {
+	// Behind the Cloudflare tunnel every connection arrives from localhost,
+	// so RemoteAddr alone would put all users in one rate-limit bucket.
+	// CF-Connecting-IP is set by the Cloudflare edge and is authoritative;
+	// X-Forwarded-For is only a fallback (spoofable on direct connections).
+	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
+		return cf
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.Index(xff, ","); i >= 0 {
+			xff = xff[:i]
+		}
+		if ip := strings.TrimSpace(xff); ip != "" {
+			return ip
+		}
+	}
 	h := r.RemoteAddr
 	if i := strings.LastIndex(h, ":"); i >= 0 {
 		h = h[:i]

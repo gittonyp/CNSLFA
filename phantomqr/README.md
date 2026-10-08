@@ -107,6 +107,22 @@ Students are provers (device HMAC key), not API callers — roles govern callers
 Wrong-role denials are logged as `FORBIDDEN` security events. `staff.role`
 migrates automatically (`ALTER TABLE` + default `'staff'`) on old databases.
 
+## Enforced business rules
+
+- Token shape validated before crypto (lengths, hex nonce/MAC, `ctr > 0`) → `MALFORMED`.
+- Student IDs uppercased at enrollment (`21bt0451` and `21BT0451` are one student).
+- Re-enrollment revokes all previous devices; admin can revoke any device
+  (`POST /api/admin/revoke`) — revoked keys fail even with a valid MAC.
+- Sessions auto-expire 12h after creation even if left OPEN; only the owning
+  staff or admin can close a session.
+- Login rate-limit keys on `CF-Connecting-IP` → `X-Forwarded-For` → socket IP,
+  so it works behind the tunnel instead of sharing one localhost bucket.
+- Passwords: bcrypt, 6–72 chars; change via `POST /api/staff/password`
+  (needs current password, kills all other sessions).
+- `session_id`/`did` allocation retries on 16-bit collision; SQLite runs
+  `busy_timeout` + WAL for concurrent scanners; dashboard counters are
+  strict per-session matches.
+
 ## Tests
 
 ```bash

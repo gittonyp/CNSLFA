@@ -1,4 +1,7 @@
 # build artifacts / local runtime state — never commit
 /phantomqr
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
 server.log

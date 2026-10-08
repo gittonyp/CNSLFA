@@ -6,6 +6,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -66,7 +67,18 @@ func setupFix(t *testing.T) (*fix, func()) {
 	return &fix{db, staffTok, "S-T1", keyA, keyB}, func() { db.Close(); os.Remove(path) }
 }
 
+// testNonce maps readable placeholders to deterministic hex (wire format).
+// Fixtures use placeholders ("n-valid-…"); prod validation stays strict.
+func testNonce(s string) string {
+	if isHex(s) {
+		return s
+	}
+	h := sha256.Sum256([]byte("test-nonce:" + s))
+	return hex.EncodeToString(h[:])[:32]
+}
+
 func tok(key []byte, sid, did string, ctr, ts int64, nonce string) Token {
+	nonce = testNonce(nonce)
 	return Token{sid, did, ctr, ts, nonce, ComputeMAC(key, CanonicalMessage(sid, did, ctr, ts, nonce))}
 }
 
@@ -159,11 +171,11 @@ func TestDuplicateAttendance(t *testing.T) {
 func TestUnknownStudentDevice(t *testing.T) {
 	f, done := setupFix(t)
 	defer done()
-	ghost := Token{"NOPE", "d7f3", 1, time.Now().Unix(), "n-u1-0000000000000001", "ab"}
+	ghost := Token{"NOPE", "d7f3", 1, time.Now().Unix(), testNonce("n-u1-0000000000000001"), "ab"}
 	if _, st := scan(f, ghost, "", ""); st != "UNKNOWN_STUDENT" {
 		t.Fatalf("unknown student %s", st)
 	}
-	baddev := Token{"21BT0451", "zzzz", 1, time.Now().Unix(), "n-u2-0000000000000001", "ab"}
+	baddev := Token{"21BT0451", "zzzz", 1, time.Now().Unix(), testNonce("n-u2-0000000000000001"), "ab"}
 	if _, st := scan(f, baddev, "", ""); st != "UNKNOWN_DEVICE" {
 		t.Fatalf("unknown device %s", st)
 	}
@@ -263,5 +275,106 @@ func TestRBAC(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), `"role":"`+want+`"`) {
 			t.Fatalf("me(%s): %s", want, rec.Body.String())
 		}
+	}
+}
+
+func postJSON(db *sql.DB, h func(*sql.DB, http.ResponseWriter, *http.Request), body string) (int, string) {
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h(db, rec, req)
+	return rec.Code, rec.Body.String()
+}
+
+func TestBusinessFixes(t *testing.T) {
+	f, done := setupFix(t)
+	defer done()
+	now := time.Now().Unix()
+	_, _ = f.db.Exec(`INSERT INTO staff_sessions(token,staff_id,device_id,created_at,expires_at) VALUES('admintok-2','ADMIN','dev',?,?)`, now, now+3600)
+
+	// 1. malformed shapes rejected before crypto
+	bad := tok(f.keyA, "21BT0451", "d7f3", 0, now, "zzzz-not-hex")
+	if _, st := scan(f, bad, "", ""); st != "MALFORMED" {
+		t.Fatalf("ctr0/nonce: got %s", st)
+	}
+
+	// 2. re-enroll revokes the old device key
+	code, b1 := postJSON(f.db, handleEnroll, `{"sid":"21BT0999","name":"Re"}`)
+	if code != 200 {
+		t.Fatalf("enroll1: %d %s", code, b1)
+	}
+	var e1 map[string]any
+	_ = json.Unmarshal([]byte(b1), &e1)
+	code, b2 := postJSON(f.db, handleEnroll, `{"sid":"21bt0999","name":"Re"}`) // lowercase ok: normalized
+	if code != 200 {
+		t.Fatalf("enroll2: %d %s", code, b2)
+	}
+	var e2 map[string]any
+	_ = json.Unmarshal([]byte(b2), &e2)
+	if e1["did"] == e2["did"] {
+		t.Fatalf("re-enroll must issue a fresh device")
+	}
+	oldKey, _ := hex.DecodeString(e1["secret_key"].(string))
+	stale := tok(oldKey, "21BT0999", e1["did"].(string), 1, now, testNonce("reenroll-old"))
+	if _, st := scan(f, stale, "", ""); st != "UNKNOWN_DEVICE" {
+		t.Fatalf("old device after re-enroll: got %s (want UNKNOWN_DEVICE)", st)
+	}
+
+	// 3. admin revoke kills a live device; staff cannot revoke
+	code, _ = postJSON(f.db, handleAdminRevoke, `{"staff_session_token":"`+f.staffTok+`","did":"`+e2["did"].(string)+`"}`)
+	if code != 403 {
+		t.Fatalf("staff revoke: got %d (want 403)", code)
+	}
+	code, rb := postJSON(f.db, handleAdminRevoke, `{"staff_session_token":"admintok-2","did":"`+e2["did"].(string)+`"}`)
+	if code != 200 || !strings.Contains(rb, `"ok":true`) {
+		t.Fatalf("admin revoke: %d %s", code, rb)
+	}
+	newKey, _ := hex.DecodeString(e2["secret_key"].(string))
+	dead := tok(newKey, "21BT0999", e2["did"].(string), 2, now, testNonce("reenroll-new"))
+	if _, st := scan(f, dead, "", ""); st != "UNKNOWN_DEVICE" {
+		t.Fatalf("revoked device: got %s", st)
+	}
+
+	// 4. password change: wrong old fails, right old works, old sessions die
+	code, _ = postJSON(f.db, handleStaffPassword, `{"staff_session_token":"`+f.staffTok+`","old_password":"nope","new_password":"newpass123"}`)
+	if code != 401 {
+		t.Fatalf("bad old pw: got %d", code)
+	}
+	code, _ = postJSON(f.db, handleStaffPassword, `{"staff_session_token":"`+f.staffTok+`","old_password":"demo123","new_password":"short"}`)
+	if code != 400 {
+		t.Fatalf("short pw: got %d", code)
+	}
+	// second session for ST04, then change pw from the first: second must die
+	_, _ = f.db.Exec(`INSERT INTO staff_sessions(token,staff_id,device_id,created_at,expires_at) VALUES('other-sess','ST04','dev',?,?)`, now, now+3600)
+	code, _ = postJSON(f.db, handleStaffPassword, `{"staff_session_token":"`+f.staffTok+`","old_password":"demo123","new_password":"newpass123"}`)
+	if code != 200 {
+		t.Fatalf("pw change: got %d", code)
+	}
+	var alive bool
+	_ = f.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM staff_sessions WHERE token='other-sess')`).Scan(&alive)
+	if alive {
+		t.Fatalf("other sessions must die on password change")
+	}
+	_ = f.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM staff_sessions WHERE token=?)`, f.staffTok).Scan(&alive)
+	if !alive {
+		t.Fatalf("changing session must survive")
+	}
+
+	// 5. close ownership: another staffer cannot close; admin can
+	_, _ = f.db.Exec(`INSERT INTO staff(staff_id,name,password_hash,role) VALUES('ST09','Other','x','staff')`)
+	_, _ = f.db.Exec(`INSERT INTO staff_sessions(token,staff_id,device_id,created_at,expires_at) VALUES('st09tok','ST09','dev',?,?)`, now, now+3600)
+	code, _ = postJSON(f.db, handleSessionClose, `{"session_id":"`+f.sess+`","staff_session_token":"st09tok"}`)
+	if code != 403 {
+		t.Fatalf("foreign close: got %d (want 403)", code)
+	}
+	code, _ = postJSON(f.db, handleSessionClose, `{"session_id":"`+f.sess+`","staff_session_token":"admintok-2"}`)
+	if code != 200 {
+		t.Fatalf("admin close: got %d", code)
+	}
+
+	// 6. stale OPEN sessions expire (>12h)
+	_, _ = f.db.Exec(`INSERT INTO attendance_sessions(session_id,course,room,staff_id,staff_device_id,start_time,end_time,status,created_at) VALUES('S-OLD','C','R','ST04','dev','x','y','OPEN',?)`, now-13*3600)
+	old := tok(f.keyA, "21BT0451", "d7f3", 50, now, testNonce("stale-session"))
+	if _, st := scan(f, old, "", "S-OLD"); st != "INVALID_SESSION" {
+		t.Fatalf("stale session: got %s", st)
 	}
 }

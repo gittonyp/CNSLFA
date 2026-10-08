@@ -119,6 +119,9 @@ func openDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // SQLite: single writer avoids "database is locked".
+	// Belt and suspenders for concurrent scanners: wait on locks, WAL mode.
+	_, _ = db.Exec(`PRAGMA busy_timeout = 5000`)
+	_, _ = db.Exec(`PRAGMA journal_mode = WAL`)
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, err

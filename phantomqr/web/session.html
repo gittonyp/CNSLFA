@@ -18,6 +18,7 @@
 <div class="row g-2"><div class="col"><label class="form-label mt-2">Start</label><input id="s" class="form-control" value="10:00"></div>
 <div class="col"><label class="form-label mt-2">End</label><input id="e" class="form-control" value="10:10"></div></div>
 <button class="btn btn-primary w-100 mt-3" id="go">Open attendance session</button>
+<button class="btn btn-outline-secondary w-100 mt-2" id="close">Close this session</button>
 <div id="out" class="mt-2"></div>
 </div></div>
 </div>
@@ -54,6 +55,15 @@ $('go').onclick=async()=>{
   if(!r.ok){$('out').innerHTML='<div class="alert alert-danger">'+JSON.stringify(j)+'</div>';return;}
   localStorage.setItem('pq_session',j.session_id);
   $('out').innerHTML='<div class="alert alert-success">Session '+j.session_id+' OPEN</div><div class="mono">session_id: '+j.session_id+'<br><a href="/staff/scanner">→ Open scanner</a></div>';
+};
+$('close').onclick=async()=>{
+  const staff=localStorage.getItem('pq_staff')||'';
+  const sid=(localStorage.getItem('pq_session')||'').trim();
+  if(!staff||!sid){$('out').innerHTML='<div class="alert alert-danger">Need staff login + session_id.</div>';return;}
+  const r=await fetch('/api/session/close',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({session_id:sid,staff_session_token:staff})});
+  const j=await r.json();
+  $('out').innerHTML=r.ok?'<div class="alert alert-secondary">Session '+sid+' CLOSED</div>':'<div class="alert alert-danger">'+(j.error||JSON.stringify(j))+'</div>';
 };
 </script>
 </body></html>
