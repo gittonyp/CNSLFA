@@ -1,32 +1,69 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1976d2">
-<title>Scanner — PhantomQR</title><link rel="stylesheet" href="/web/style.css">
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Scanner — PhantomQR</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
 <script src="/web/jsQR.js"></script>
-<script src="/web/html5-qrcode.min.js"></script></head>
-<body><div class="wrap">
-<div class="brand">PHANTOMQR SCANNER</div>
-<div class="scanhead">
-<div><div class="dim">Course</div><b id="c">–</b></div>
-<div><div class="dim">Session</div><b id="s">–</b></div>
-<div><div class="dim">Scanned</div><b id="n">0</b></div>
+<script src="/web/html5-qrcode.min.js"></script>
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol px-0" id="app" style="display:none">
+<div class="scanhead bg-white border-bottom px-3 py-2">
+<div><small class="text-muted d-block">Course</small><b id="c">–</b></div>
+<div><small class="text-muted d-block">Session</small><b id="s">–</b></div>
+<div><small class="text-muted d-block">Scanned</small><b id="n">0</b></div>
+<div class="text-end"><button class="btn btn-sm btn-outline-secondary" id="logout">Logout</button></div>
 </div>
-<label>Session ID</label><input id="sess" placeholder="S-XXXX" autocomplete="off">
-<div id="reader"></div>
-<button class="btn big" id="cam">◎ Start scanner</button>
-<div id="last" class="result" style="display:none"></div>
-<div class="mono" id="net">Queued offline: 0 · Server: ● Connected</div>
-<details><summary class="dim">No camera? Manual fallback (paste / upload)</summary>
-<label>Paste student token JSON</label>
-<textarea id="paste" rows="3" placeholder='{"sid":"21BT0451",...}'></textarea>
-<button class="btn ghost" id="go">Submit pasted token</button>
-<label>Or upload QR image (decoded on-device)</label>
-<input id="file" type="file" accept="image/*">
+<div class="p-3">
+<label class="form-label">Session ID</label>
+<input id="sess" class="form-control" placeholder="S-XXXX" autocomplete="off">
+<div id="reader" class="mt-2"></div>
+<button class="btn btn-primary btn-lg w-100 mt-2" id="cam">◎ Start scanner</button>
+<div id="last" class="alert mt-2" style="display:none"></div>
+<div class="mono mt-2" id="net">Queued offline: 0 · Server: ● Connected</div>
+<details class="mt-2"><summary class="text-muted">No camera? Manual fallback (paste / upload)</summary>
+<label class="form-label mt-2">Paste student token JSON</label>
+<textarea id="paste" class="form-control" rows="3" placeholder='{"sid":"21BT0451",...}'></textarea>
+<button class="btn btn-outline-primary mt-2" id="go">Submit pasted token</button>
+<label class="form-label mt-2">Or upload QR image (decoded on-device)</label>
+<input id="file" class="form-control" type="file" accept="image/*">
 </details>
-<p class="dim">Camera needs localhost or HTTPS (browser rule). Over plain HTTP LAN IP, use the manual fallback above — same API, same verdicts.</p>
-<div class="nav"><a href="/staff/session">Sessions</a><a href="/dashboard">Security Center</a></div>
+<p class="text-muted small mt-2">Camera needs localhost or HTTPS (browser rule). Over plain HTTP LAN IP, use the manual fallback — same API, same verdicts.</p>
 </div>
+</div>
+<div class="container appcol py-5 text-center" id="lock" style="display:none">
+<h2>Staff only</h2>
+<p class="text-muted">The scanner needs a staff login. Students cannot scan or submit attendance — the API rejects them.</p>
+<a class="btn btn-primary" href="/staff/login">Staff login</a>
+</div>
+<nav class="tabbar">
+<a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
+<a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
+<a href="/staff/scanner" data-p="/staff/scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg><span>Scan</span></a>
+<a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
+<a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
+</nav>
+<script src="/web/bootstrap.bundle.min.js"></script>
 <script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
 const $=id=>document.getElementById(id);
+// ---- Staff gate: students (or logged-out browsers) see the lock screen ----
+(async()=>{
+  const t=localStorage.getItem('pq_staff')||'';
+  let me=null;
+  if(t){try{const r=await fetch('/api/staff/me?staff_session_token='+encodeURIComponent(t));const j=await r.json();if(r.ok&&j.ok)me=j;}catch(e){}}
+  if(!me){
+    localStorage.removeItem('pq_staff');localStorage.removeItem('pq_role');
+    $('lock').style.display='block';return;
+  }
+  $('app').style.display='block';
+  $('whoami').textContent=me.staff_id+' ('+me.role+')';
+})();
 // Offline queue (localStorage). server time decides validity on arrival;
 // scanner-reported scanned_at is informational only.
 const Q=JSON.parse(localStorage.getItem('pq_queue')||'[]');
@@ -53,9 +90,9 @@ async function flush(){
 setInterval(flush,5000);
 function show(j,queued){
   const el=$('last');el.style.display='block';
-  el.className='result '+(j.success?'rok':'rbad');
+  el.className='alert mt-2 '+(j.success?'alert-success':'alert-danger');
   el.innerHTML='<b>'+(j.success?'✓ ':'✕ ')+(j.student||j.status)+'</b><br>'+(j.message||'')+
-    '<div class="dim">'+j.status+' · '+(queued?'from offline queue':'live')+'</div>';
+    '<div class="small">'+j.status+' · '+(queued?'from offline queue':'live')+'</div>';
   if(j.success){
     accepted++;localStorage.setItem('pq_accepted',String(accepted));paintQ();
     if(navigator.vibrate)navigator.vibrate(60);
@@ -66,7 +103,7 @@ let lastPayload='',lastAt=0,cooling=false;
 async function submit(tok){
   const staff=localStorage.getItem('pq_staff')||'';
   const sid=($('sess').value||localStorage.getItem('pq_session')||'').trim();
-  if(!staff){show({success:false,status:'ERROR',message:'Staff login required — open /staff/login (ST04/demo123).'});return;}
+  if(!staff){show({success:false,status:'ERROR',message:'Staff login required at /staff/login.'});return;}
   if(!sid){show({success:false,status:'ERROR',message:'Enter session_id first.'});return;}
   let token=tok;
   if(typeof token==='string'){try{token=JSON.parse(token);}catch(e){show({success:false,status:'ERROR',message:'Not valid token JSON.'});return;}}
@@ -80,22 +117,28 @@ async function submit(tok){
     show(await r.json(),false);
   }catch(e){
     Q.push({token,session_id:sid,scanned_at:Math.floor(now/1000),queued_at:now});saveQ();
-    const el=$('last');el.style.display='block';el.className='result rwarn';
+    const el=$('last');el.style.display='block';el.className='alert alert-warning mt-2';
     el.innerHTML='<b>○ Offline — scan queued ('+Q.length+')</b>';
   }
 }
-// ---- Continuous camera scan: point, beep-free, auto-submit on every decode ----
+// ---- Continuous camera scan: point, auto-submit on every decode ----
 let scanning=false,hl=null;
 $('cam').onclick=async()=>{
   if(typeof Html5Qrcode==='undefined'){$('cam').textContent='Camera lib failed to load — use manual fallback';return;}
-  if(scanning){try{await hl.stop();}catch(e){}scanning=false;$('cam').textContent='◎ Start scanner';$('cam').classList.remove('stop');return;}
+  if(scanning){try{await hl.stop();}catch(e){}scanning=false;$('cam').textContent='◎ Start scanner';return;}
   try{
     hl=new Html5Qrcode('reader');
     await hl.start({facingMode:'environment'},{fps:10,qrbox:function(w,h){const s=Math.min(w,h)*0.75;return{width:s,height:s};}},(txt)=>submit(txt));
-    scanning=true;$('cam').textContent='■ Stop scanner';$('cam').classList.add('stop');
+    scanning=true;$('cam').textContent='■ Stop scanner';
   }catch(e){
     show({success:false,status:'ERROR',message:'Camera blocked: '+(e.message||e)+'. Use localhost/HTTPS or the manual fallback.'});
   }
+};
+$('logout').onclick=async()=>{
+  const t=localStorage.getItem('pq_staff')||'';
+  try{await fetch('/api/staff/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_session_token:t})});}catch(e){}
+  localStorage.removeItem('pq_staff');localStorage.removeItem('pq_role');
+  location.reload();
 };
 $('go').onclick=()=>submit($('paste').value);
 $('sess').value=localStorage.getItem('pq_session')||'';
@@ -121,12 +164,5 @@ $('file').onchange=()=>{
     $('c').textContent=j.course||'–';$('s').textContent=sid;
   }catch(e){}
 })();
-</script></div>
-<nav class="tabbar">
-<a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
-<a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
-<a href="/staff/scanner" data-p="/staff/scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg><span>Scan</span></a>
-<a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
-<a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
-</nav>
-<script>document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});</script></body></html>
+</script>
+</body></html>

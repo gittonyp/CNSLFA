@@ -1,28 +1,31 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1976d2">
-<title>Session — PhantomQR</title><link rel="stylesheet" href="/web/style.css"></head>
-<body><div class="wrap">
-<div class="brand">PHANTOMQR</div><h1>Class session</h1>
-<div class="nav"><a href="/">Home</a><a href="/staff/login">Staff login</a><a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a></div>
-<div class="card">
-<label>Course</label><input id="c" value="CNS-601">
-<label>Room</label><input id="r" value="A-204">
-<div class="grid g2"><div><label>Start</label><input id="s" value="10:00"></div><div><label>End</label><input id="e" value="10:10"></div></div>
-<button class="btn" id="go" style="margin-top:12px">OPEN ATTENDANCE SESSION</button>
-<div id="out" style="margin-top:10px"></div></div>
-<script>
-const $=id=>document.getElementById(id);
-$('go').onclick=async()=>{
-  const staff=localStorage.getItem('pq_staff')||'';
-  if(!staff){$('out').innerHTML='<span class="bad">Login first at /staff/login (demo ST04/demo123).</span>';return;}
-  const r=await fetch('/api/session/open',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({course:$('c').value,room:$('r').value,start:$('s').value,end:$('e').value,staff_session_token:staff})});
-  const j=await r.json();
-  if(!r.ok){$('out').innerHTML='<span class="bad">'+JSON.stringify(j)+'</span>';return;}
-  localStorage.setItem('pq_session',j.session_id);
-  $('out').innerHTML='<span class="pill live">● Session '+j.session_id+' OPEN</span><div class="mono" style="margin-top:8px">session_id: '+j.session_id+'<br><a style="color:#1976d2" href="/staff/scanner">→ Open scanner</a></div>';
-};
-</script></div>
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Session — PhantomQR</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol py-3" id="app" style="display:none">
+<div class="card"><div class="card-body">
+<h5 class="card-title">Class session</h5>
+<label class="form-label">Course</label><input id="c" class="form-control" value="CNS-601">
+<label class="form-label mt-2">Room</label><input id="r" class="form-control" value="A-204">
+<div class="row g-2"><div class="col"><label class="form-label mt-2">Start</label><input id="s" class="form-control" value="10:00"></div>
+<div class="col"><label class="form-label mt-2">End</label><input id="e" class="form-control" value="10:10"></div></div>
+<button class="btn btn-primary w-100 mt-3" id="go">Open attendance session</button>
+<div id="out" class="mt-2"></div>
+</div></div>
+</div>
+<div class="container appcol py-5 text-center" id="lock" style="display:none">
+<h2>Staff only</h2>
+<p class="text-muted">Sessions can only be opened by logged-in staff.</p>
+<a class="btn btn-primary" href="/staff/login">Staff login</a>
+</div>
 <nav class="tabbar">
 <a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
 <a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
@@ -30,4 +33,27 @@ $('go').onclick=async()=>{
 <a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
 <a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
 </nav>
-<script>document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});</script></body></html>
+<script src="/web/bootstrap.bundle.min.js"></script>
+<script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
+const $=id=>document.getElementById(id);
+(async()=>{
+  const t=localStorage.getItem('pq_staff')||'';
+  let me=null;
+  if(t){try{const r=await fetch('/api/staff/me?staff_session_token='+encodeURIComponent(t));const j=await r.json();if(r.ok&&j.ok)me=j;}catch(e){}}
+  if(!me){localStorage.removeItem('pq_staff');$('lock').style.display='block';return;}
+  $('app').style.display='block';
+  $('whoami').textContent=me.staff_id+' ('+me.role+')';
+})();
+$('go').onclick=async()=>{
+  const staff=localStorage.getItem('pq_staff')||'';
+  if(!staff){$('out').innerHTML='<div class="alert alert-danger">Login first at /staff/login.</div>';return;}
+  const r=await fetch('/api/session/open',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({course:$('c').value,room:$('r').value,start:$('s').value,end:$('e').value,staff_session_token:staff})});
+  const j=await r.json();
+  if(!r.ok){$('out').innerHTML='<div class="alert alert-danger">'+JSON.stringify(j)+'</div>';return;}
+  localStorage.setItem('pq_session',j.session_id);
+  $('out').innerHTML='<div class="alert alert-success">Session '+j.session_id+' OPEN</div><div class="mono">session_id: '+j.session_id+'<br><a href="/staff/scanner">→ Open scanner</a></div>';
+};
+</script>
+</body></html>

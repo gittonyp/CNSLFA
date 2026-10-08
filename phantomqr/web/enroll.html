@@ -1,31 +1,25 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1976d2">
-<title>Enroll — PhantomQR</title><link rel="stylesheet" href="/web/style.css"></head>
-<body><div class="wrap">
-<div class="brand">PHANTOMQR</div><h1>Student enrollment</h1>
-<div class="nav"><a href="/">Home</a><a href="/student">My QR</a><a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a></div>
-<div class="card">
-<label>Student ID</label><input id="sid" value="21BT0451">
-<label>Student Name</label><input id="name" value="Priya">
-<button class="btn" id="go" style="margin-top:14px">Enroll this device</button>
-<div id="out" style="margin-top:12px"></div>
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Enroll — PhantomQR</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol py-3">
+<div class="card"><div class="card-body">
+<h5 class="card-title">Student enrollment</h5>
+<p class="text-muted small">Self-service kiosk: generates a per-device 32-byte key. The key stays in this browser (prototype — production uses Keystore/Keychain).</p>
+<label class="form-label">Student ID</label><input id="sid" class="form-control" value="21BT0451">
+<label class="form-label mt-2">Student Name</label><input id="name" class="form-control" value="Priya">
+<button class="btn btn-primary w-100 mt-3" id="go">Enroll this device</button>
+<div id="out" class="mt-2"></div>
+</div></div>
 </div>
-<div class="card" style="margin-top:12px"><h2>Prototype limitation</h2>
-<p class="dim">Key is stored in this browser's localStorage. Production must use Android Keystore / iOS Keychain (non-exportable). We never show the full key in normal UI — only a fingerprint.</p></div>
-<script>
-const $=id=>document.getElementById(id);
-$('go').onclick=async()=>{
-  const sid=$('sid').value.trim(), name=$('name').value.trim();
-  const r=await fetch('/api/student/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid,name})});
-  const j=await r.json();
-  if(!r.ok){$('out').innerHTML='<span class="bad">'+JSON.stringify(j)+'</span>';return;}
-  // store device credentials locally (prototype storage)
-  localStorage.setItem('pq_sid',j.sid);localStorage.setItem('pq_name',j.name);
-  localStorage.setItem('pq_did',j.did);localStorage.setItem('pq_key',j.secret_key);
-  if(!localStorage.getItem('pq_ctr_'+j.sid+'_'+j.did))localStorage.setItem('pq_ctr_'+j.sid+'_'+j.did,'0');
-  $('out').innerHTML='<span class="pill live">● Device Enrolled</span><div class="mono" style="margin-top:8px">sid: '+j.sid+'<br>name: '+j.name+'<br>did: '+j.did+'<br>key fingerprint (SHA-256[0:12]): '+j.key_fp+'<br><br><a style="color:#1976d2" href="/student">→ Open My QR</a></div>';
-};
-</script></div>
 <nav class="tabbar">
 <a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
 <a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
@@ -33,4 +27,19 @@ $('go').onclick=async()=>{
 <a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
 <a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
 </nav>
-<script>document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});</script></body></html>
+<script src="/web/bootstrap.bundle.min.js"></script>
+<script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
+const $=id=>document.getElementById(id);
+$('go').onclick=async()=>{
+  const sid=$('sid').value.trim(), name=$('name').value.trim();
+  const r=await fetch('/api/student/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid,name})});
+  const j=await r.json();
+  if(!r.ok){$('out').innerHTML='<div class="alert alert-danger">'+JSON.stringify(j)+'</div>';return;}
+  localStorage.setItem('pq_sid',j.sid);localStorage.setItem('pq_name',j.name);
+  localStorage.setItem('pq_did',j.did);localStorage.setItem('pq_key',j.secret_key);
+  if(!localStorage.getItem('pq_ctr_'+j.sid+'_'+j.did))localStorage.setItem('pq_ctr_'+j.sid+'_'+j.did,'0');
+  $('out').innerHTML='<div class="alert alert-success">Device enrolled: '+j.sid+' · '+j.did+'</div><div class="mono">key fingerprint: '+j.key_fp+'<br><a href="/student">→ Open My QR</a></div>';
+};
+</script>
+</body></html>

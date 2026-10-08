@@ -1,23 +1,32 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
-<title>phantomqr</title><link rel="stylesheet" href="/web/style.css"></head>
-<body><div class="wrap">
-<div class="brand">phantomqr</div>
-<div class="phead">
+<title>phantomqr</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol px-0">
+<div class="d-flex align-items-center gap-3 p-3 bg-white border-bottom">
 <div class="av"><div>PQ</div></div>
-<div class="pstats">
-<div><b id="stPresent">0</b><span>present</span></div>
-<div><b id="stStudents">0</b><span>students</span></div>
-<div><b id="stBlocked">0</b><span>blocked</span></div>
+<div class="d-flex flex-fill justify-content-around text-center">
+<div><b id="stPresent" class="d-block fs-5">0</b><small class="text-muted">present</small></div>
+<div><b id="stStudents" class="d-block fs-5">0</b><small class="text-muted">students</small></div>
+<div><b id="stBlocked" class="d-block fs-5">0</b><small class="text-muted">blocked</small></div>
 </div>
 </div>
-<div class="bio"><b>PhantomQR · Secure Classroom Auth</b>
-<span class="dim">Possession of the QR is not possession of the identity.</span><br>
-Student shows a rotating signed QR · professor scans · server verifies.
+<div class="px-3 py-2 bg-white border-bottom">
+<b>PhantomQR · Secure Classroom Auth</b><br>
+<small class="text-muted fst-italic">Possession of the QR is not possession of the identity.</small><br>
+<small>Student shows a rotating signed QR · professor scans · server verifies.</small>
+<div class="d-flex gap-2 py-2">
+<a class="btn btn-primary flex-fill" href="/staff/scanner">Open Scanner</a>
+<a class="btn btn-outline-primary flex-fill" href="/dashboard">Activity</a>
 </div>
-<div class="prow">
-<a class="btn" href="/staff/scanner">Open Scanner</a>
-<a class="btn ghost" href="/dashboard">Activity</a>
 </div>
 <div class="hls">
 <div class="hl"><div class="av"><div>H</div></div><span>HMAC</span></div>
@@ -33,7 +42,7 @@ Student shows a rotating signed QR · professor scans · server verifies.
 <a class="post" style="background:linear-gradient(135deg,#2e7d32,#66bb6a)" href="/staff/scanner">Scan<small>professor cam</small></a>
 <a class="post" style="background:linear-gradient(135deg,#ed6c02,#f9ce34)" href="/dashboard">Activity<small>live feed</small></a>
 <a class="post" style="background:linear-gradient(135deg,#d32f2f,#ff8a65)" href="/attacks">Attacks<small>watch them fail</small></a>
-<a class="post" style="background:linear-gradient(135deg,#37474f,#90a4ae)" href="/staff/login">Staff<small>ST04 login</small></a>
+<a class="post" style="background:linear-gradient(135deg,#37474f,#90a4ae)" href="/staff/login">Staff<small>login</small></a>
 </div>
 </div>
 <nav class="tabbar">
@@ -43,6 +52,7 @@ Student shows a rotating signed QR · professor scans · server verifies.
 <a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
 <a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
 </nav>
+<script src="/web/bootstrap.bundle.min.js"></script>
 <script>
 document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
 (async()=>{
@@ -53,4 +63,5 @@ document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pat
     document.getElementById('stBlocked').textContent=(j.replays||0)+(j.tampering||0)+(j.unauth||0);
   }catch(e){}
 })();
-</script></div></body></html>
+</script>
+</body></html>

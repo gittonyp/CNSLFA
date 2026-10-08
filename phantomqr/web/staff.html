@@ -1,52 +1,27 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1976d2">
-<title>Staff — PhantomQR</title><link rel="stylesheet" href="/web/style.css"></head>
-<body><div class="wrap">
-<div class="brand">PHANTOMQR</div><h1>Staff console</h1>
-<div class="nav"><a href="/">Home</a><a href="/staff/session">Sessions</a><a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a></div>
-<div class="card"><h2>Login (prototype: fixed demo account)</h2>
-<label>Staff ID</label><input id="sid" value="ST04">
-<label>Password</label><input id="pw" type="password" value="demo123">
-<button class="btn" id="go" style="margin-top:12px">Login</button>
-<button class="btn ghost" id="lo" style="margin-top:8px">Logout this browser</button>
-<button class="btn danger" id="rs" style="margin-top:8px;display:none">Reset demo data (admin)</button>
-<div id="out" style="margin-top:10px"></div></div>
-<script>
-const $=id=>document.getElementById(id);
-$('go').onclick=async()=>{
-  const r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({staff_id:$('sid').value,password:$('pw').value})});
-  const j=await r.json();
-  if(!r.ok||!j.ok){$('out').innerHTML='<span class="bad">Login failed: '+(j.error||'unknown')+'</span>';return;}
-  localStorage.setItem('pq_staff',j.staff_session_token);localStorage.setItem('pq_staff_id',j.staff_id);
-  localStorage.setItem('pq_role',j.role||'staff');
-  if(j.role==='admin')$('rs').style.display='';
-  $('out').innerHTML='<span class="pill live">● Logged in as '+j.staff_id+' ('+(j.role||'staff')+')</span><div class="mono" style="margin-top:8px">staff session stored in this browser (bcrypt-verified, 8h expiry).<br><a style="color:#0095f6" href="/staff/session">→ Open attendance session</a> · <a style="color:#0095f6" href="/staff/scanner">→ Scanner</a></div>';
-};
-$('lo').onclick=async()=>{
-  const t=localStorage.getItem('pq_staff')||'';
-  await fetch('/api/staff/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_session_token:t})});
-  localStorage.removeItem('pq_staff');localStorage.removeItem('pq_staff_id');
-  $('out').innerHTML='<span class="dim">Logged out on server + this browser.</span>';
-};
-$('rs').onclick=async()=>{
-  const t=localStorage.getItem('pq_staff')||'';
-  if(!t){$('out').innerHTML='<span class="bad">Login first.</span>';return;}
-  const r=await fetch('/api/admin/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_session_token:t})});
-  const j=await r.json();
-  $('out').innerHTML=r.ok?'<span class="pill live">● Demo reset</span><div class="mono" style="margin-top:8px">'+JSON.stringify(j.cleared)+'</div>':'<span class="bad">'+JSON.stringify(j)+'</span>';
-};
-(async()=>{ // session guard: show who is logged in, reveal admin tools only for admin
-  const t=localStorage.getItem('pq_staff')||'';if(!t)return;
-  try{
-    const r=await fetch('/api/staff/me?staff_session_token='+encodeURIComponent(t));const j=await r.json();
-    if(!r.ok||!j.ok){localStorage.removeItem('pq_staff');localStorage.removeItem('pq_role');return;}
-    localStorage.setItem('pq_role',j.role||'staff');
-    $('out').innerHTML='<span class="pill live">● '+j.staff_id+' ('+j.role+')</span><div class="dim" style="margin-top:6px">session valid · expires '+new Date(j.expires_at*1000).toLocaleTimeString()+'</div>';
-    if(j.role==='admin')$('rs').style.display='';
-  }catch(e){}
-})();
-</script></div>
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Staff — PhantomQR</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol py-3">
+<div class="card"><div class="card-body">
+<h5 class="card-title">Staff console</h5>
+<p class="text-muted small">Demo accounts: <b>ST04 / demo123</b> (staff) · <b>ADMIN / admin123</b> (admin). bcrypt-verified, 8h sessions, rate-limited.</p>
+<label class="form-label">Staff ID</label><input id="sid" class="form-control" value="ST04" autocomplete="username">
+<label class="form-label mt-2">Password</label><input id="pw" class="form-control" type="password" value="demo123" autocomplete="current-password">
+<button class="btn btn-primary w-100 mt-3" id="go">Login</button>
+<button class="btn btn-outline-secondary w-100 mt-2" id="lo">Logout this browser</button>
+<button class="btn btn-danger w-100 mt-2" id="rs" style="display:none">Reset demo data (admin)</button>
+<div id="out" class="mt-2"></div>
+</div></div>
+</div>
 <nav class="tabbar">
 <a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
 <a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
@@ -54,4 +29,45 @@ $('rs').onclick=async()=>{
 <a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
 <a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
 </nav>
-<script>document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});</script></body></html>
+<script src="/web/bootstrap.bundle.min.js"></script>
+<script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
+const $=id=>document.getElementById(id);
+$('go').onclick=async()=>{
+  const r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({staff_id:$('sid').value,password:$('pw').value})});
+  const j=await r.json();
+  if(!r.ok||!j.ok){$('out').innerHTML='<div class="alert alert-danger">Login failed: '+(j.error||'unknown')+'</div>';return;}
+  localStorage.setItem('pq_staff',j.staff_session_token);localStorage.setItem('pq_staff_id',j.staff_id);
+  localStorage.setItem('pq_role',j.role||'staff');
+  if(j.role==='admin')$('rs').style.display='';
+  $('whoami').textContent=j.staff_id+' ('+(j.role||'staff')+')';
+  $('out').innerHTML='<div class="alert alert-success">Logged in as '+j.staff_id+' ('+(j.role||'staff')+')</div><div class="mono"><a href="/staff/session">→ Open attendance session</a> · <a href="/staff/scanner">→ Scanner</a></div>';
+};
+$('lo').onclick=async()=>{
+  const t=localStorage.getItem('pq_staff')||'';
+  await fetch('/api/staff/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_session_token:t})});
+  localStorage.removeItem('pq_staff');localStorage.removeItem('pq_staff_id');localStorage.removeItem('pq_role');
+  $('whoami').textContent='';$('rs').style.display='none';
+  $('out').innerHTML='<div class="alert alert-secondary">Logged out on server + this browser.</div>';
+};
+$('rs').onclick=async()=>{
+  const t=localStorage.getItem('pq_staff')||'';
+  if(!t){$('out').innerHTML='<div class="alert alert-danger">Login first.</div>';return;}
+  const r=await fetch('/api/admin/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_session_token:t})});
+  const j=await r.json();
+  $('out').innerHTML=r.ok?'<div class="alert alert-success">Demo reset</div><div class="mono">'+JSON.stringify(j.cleared)+'</div>':'<div class="alert alert-danger">'+JSON.stringify(j)+'</div>';
+};
+(async()=>{ // session guard: show who is logged in, reveal admin tools only for admin
+  const t=localStorage.getItem('pq_staff')||'';if(!t)return;
+  try{
+    const r=await fetch('/api/staff/me?staff_session_token='+encodeURIComponent(t));const j=await r.json();
+    if(!r.ok||!j.ok){localStorage.removeItem('pq_staff');localStorage.removeItem('pq_role');return;}
+    localStorage.setItem('pq_role',j.role||'staff');
+    $('whoami').textContent=j.staff_id+' ('+j.role+')';
+    $('out').innerHTML='<div class="alert alert-success">'+j.staff_id+' ('+j.role+') · session valid, expires '+new Date(j.expires_at*1000).toLocaleTimeString()+'</div>';
+    if(j.role==='admin')$('rs').style.display='';
+  }catch(e){}
+})();
+</script>
+</body></html>

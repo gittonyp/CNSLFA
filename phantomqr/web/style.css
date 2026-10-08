@@ -1,113 +1,54 @@
-/* PhantomQR — Instagram-style mobile-first theme (hand-rolled, zero build).
-   IG language: white paper, #dbdbdb hairlines, #0095f6 action blue,
-   gradient story rings, 3-col post grid, bottom tab bar. Old class names kept. */
-:root{
-  --bg:#fafafa; --paper:#fff; --line:#dbdbdb;
-  --txt:#262626; --dim:#8e8e8e;
-  --blue:#0095f6; --blue-dark:#0081d6;
-  --grn:#2e7d32; --grn-bg:#e6f4ea;
-  --red:#ed4956; --red-bg:#fdeceb;
-  --amb:#ed6c02; --amb-bg:#fef7e0;
-  --grad:linear-gradient(45deg,#f9ce34,#ee2a7b,#6228d7);
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:var(--bg);color:var(--txt);
+/* PhantomQR theme on top of vendored Bootstrap 5.
+   IG-flavored mobile app: 520px column, white top bar, bottom tab bar,
+   gradient story-ring avatars, post grid, mono token blocks. */
+:root{--pq-blue:#0095f6;--pq-ink:#262626;--pq-dim:#8e8e8e;--pq-line:#dbdbdb;
+  --pq-grad:linear-gradient(45deg,#f9ce34,#ee2a7b,#6228d7)}
+html{-webkit-tap-highlight-color:transparent}
+body{background:#fafafa;color:var(--pq-ink);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  min-height:100vh;padding-bottom:calc(70px + env(safe-area-inset-bottom))}
-.wrap{max-width:520px;margin:0 auto;padding:0 0 24px}
-/* Top bar */
-.brand{margin:0;padding:12px 16px;background:var(--paper);color:var(--txt);
-  font-weight:700;font-size:19px;letter-spacing:.5px;border-bottom:1px solid var(--line);
-  position:sticky;top:0;z-index:10;font-family:"Segoe UI",-apple-system,sans-serif}
-h1{font-size:22px;font-weight:700;margin:12px 16px 4px}
-h2{font-size:15px;font-weight:600;margin:0 0 8px}
-.tag{color:var(--dim);font-style:italic;margin:0 16px 8px;font-size:14px}
-/* Post card */
-.card{background:var(--paper);border-top:1px solid var(--line);border-bottom:1px solid var(--line);
-  padding:12px 16px;margin:0 0 12px}
-@media(min-width:560px){.card{border:1px solid var(--line);border-radius:12px;margin:0 12px 12px}}
-.grid{display:grid;gap:12px;padding:0 16px}.g2,.g3{grid-template-columns:1fr 1fr}
-/* Buttons: IG blue contained */
-.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;background:var(--blue);color:#fff;border:0;
-  padding:10px 18px;border-radius:8px;cursor:pointer;font-weight:600;font-size:15px;text-decoration:none;
-  touch-action:manipulation;width:100%}
-.btn:active{background:var(--blue-dark)}
-.btn.ghost{background:transparent;color:var(--blue);border:1px solid var(--line)}
-.btn.danger{background:var(--red)}.btn.ok{background:var(--grn)}
-.btn.big{min-height:54px;font-size:16px}
-.btn.stop{background:var(--txt)}
-/* Inputs */
-input,select,textarea{width:100%;background:var(--paper);border:1px solid var(--line);color:var(--txt);
-  border-radius:8px;padding:12px;font-size:16px}
-input:focus,select:focus,textarea:focus{outline:none;border:1px solid var(--dim)}
-label{font-size:13px;color:var(--dim);display:block;margin:12px 0 6px}
-.mono{font-family:var(--mono);font-size:12px;word-break:break-all;background:var(--bg);
-  border:1px solid var(--line);border-radius:8px;padding:10px}
-.mono a{color:var(--blue)}
-.pill{display:inline-block;padding:4px 12px;border-radius:16px;font-size:12px;font-weight:600;background:#efefef}
-.pill.live{background:var(--grn-bg);color:var(--grn)}
-.live{color:var(--grn)}.warn{color:var(--amb)}.bad{color:var(--red)}.dim{color:var(--dim)}
-/* Student QR = the post photo */
-#qr{display:flex;justify-content:center;background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px;margin:12px 0}
-#qr img,#qr canvas,#qr table{width:min(72vw,300px)!important;height:min(72vw,300px)!important}
-.ring{width:54px;height:54px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
-  border:2px solid var(--txt);font-weight:600}
+  padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+.appcol{max-width:520px}
+.pq-top{background:#fff!important;border-bottom:1px solid var(--pq-line)}
+.pq-top .navbar-brand{color:var(--pq-ink)!important;font-size:19px}
+.pq-top .navbar-text{font-size:12px}
+/* IG buttons */
+.btn-primary{background:var(--pq-blue);border-color:var(--pq-blue)}
+.btn{min-height:48px;font-weight:600}
+.form-control{font-size:16px} /* stops iOS auto-zoom */
+.card{border-color:var(--pq-line)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;
+  word-break:break-all;background:#f7f7f7;border:1px solid var(--pq-line);border-radius:.5rem;padding:.6rem}
 /* Gradient story-ring avatar */
-.av{width:64px;height:64px;border-radius:50%;padding:3px;background:var(--grad);flex:0 0 auto}
-.av>div{width:100%;height:100%;border-radius:50%;background:var(--paper);display:flex;align-items:center;
+.av{width:64px;height:64px;border-radius:50%;padding:3px;background:var(--pq-grad);flex:0 0 auto}
+.av>div{width:100%;height:100%;border-radius:50%;background:#fff;display:flex;align-items:center;
   justify-content:center;font-weight:800;font-size:20px;border:2px solid #fff}
 .av.sm{width:40px;height:40px}.av.sm>div{font-size:13px}
-/* Profile header */
-.phead{display:flex;gap:18px;align-items:center;padding:14px 16px;background:var(--paper)}
-.pstats{display:flex;flex:1;justify-content:space-around;text-align:center}
-.pstats b{display:block;font-size:17px}.pstats span{font-size:12px;color:var(--dim)}
-.bio{padding:0 16px 10px;background:var(--paper);font-size:14px}
-.bio b{display:block}
-.prow{display:flex;gap:8px;padding:0 16px 12px;background:var(--paper)}
-.prow .btn{margin:0}
-/* Story highlights */
-.hls{display:flex;gap:14px;overflow-x:auto;padding:12px 16px;background:var(--paper);margin-bottom:12px;
-  border-top:1px solid var(--line);border-bottom:1px solid var(--line);-webkit-overflow-scrolling:touch}
+/* Highlights + post grid */
+.hls{display:flex;gap:14px;overflow-x:auto;padding:12px 16px;background:#fff;
+  border-top:1px solid var(--pq-line);border-bottom:1px solid var(--pq-line);-webkit-overflow-scrolling:touch}
 .hl{flex:0 0 auto;text-align:center;width:64px}
 .hl .av{width:56px;height:56px;margin:0 auto}.hl .av>div{font-size:14px}
-.hl span{font-size:11px;color:var(--dim)}
-/* 3-col post grid */
+.hl span{font-size:11px;color:var(--pq-dim)}
 .posts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px}
-.post{position:relative;aspect-ratio:1;display:flex;align-items:flex-end;color:#fff;text-decoration:none;
-  padding:8px;font-weight:700;font-size:13px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
-.post small{font-weight:400;display:block;font-size:11px}
-/* Action icon row */
-.actions{display:flex;gap:14px;align-items:center;padding:6px 0}
-.actions svg{width:26px;height:26px}
-/* Activity feed rows */
-.feed{max-height:420px;overflow:auto;display:flex;flex-direction:column}
-.row{display:flex;gap:10px;align-items:center;border-bottom:1px solid #efefef;padding:10px 0;background:#fff;font-size:14px}
-.ok-b{border-left:3px solid var(--grn);padding-left:8px}
-.bad-b{border-left:3px solid var(--red);padding-left:8px}
-.warn-b{border-left:3px solid var(--amb);padding-left:8px}
-/* Old top link lists become horizontal scroll chips */
-.nav{display:flex;gap:8px;margin:10px 0;overflow-x:auto;padding:0 16px 6px;-webkit-overflow-scrolling:touch}
-.nav a{flex:0 0 auto;color:var(--txt);text-decoration:none;border:1px solid var(--line);padding:10px 14px;
-  border-radius:8px;background:#fff;font-size:13px;font-weight:600}
+.post{position:relative;aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end;
+  color:#fff!important;text-decoration:none;padding:8px;font-weight:700;font-size:14px;
+  text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.post small{font-weight:400;font-size:11px}
+/* Student QR = the post photo */
+#qrbox{background:#fff;border:1px solid var(--pq-line);border-radius:.5rem;padding:14px;margin:12px 0;
+  display:flex;justify-content:center}
+#qrbox img,#qrbox canvas,#qrbox table{width:min(72vw,300px)!important;height:min(72vw,300px)!important}
 /* Scanner */
-#reader{width:100%;border-radius:8px;overflow:hidden;background:#000;margin-top:10px}
+#reader{width:100%;border-radius:.5rem;overflow:hidden;background:#000}
 #reader video{width:100%!important}
-.scanhead{position:sticky;top:53px;z-index:5;display:flex;gap:12px;background:var(--paper);
-  border-bottom:1px solid var(--line);padding:10px 16px;margin-bottom:0}
-.scanhead>div{flex:1;min-width:0;font-size:13px}.scanhead b{font-size:15px}
-.result{border-radius:8px;padding:14px;margin-top:12px;font-size:15px;border:1px solid var(--line)}
-.rok{background:var(--grn-bg);color:var(--grn);border-color:var(--grn)}
-.rbad{background:var(--red-bg);color:var(--red);border-color:var(--red)}
-.rwarn{background:var(--amb-bg);color:#7a4a00;border-color:var(--amb)}
-details{margin-top:12px}summary{cursor:pointer;min-height:48px;display:flex;align-items:center;font-weight:600;font-size:14px}
-video{width:100%;border-radius:8px;background:#000}
-pre{white-space:pre-wrap}
+.scanhead{position:sticky;top:56px;z-index:5}
 /* Bottom tab bar */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--paper);
-  border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
-.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--dim);
-  text-decoration:none;font-size:10px;padding:8px 0 6px;min-height:56px;justify-content:center}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:#fff;
+  border-top:1px solid var(--pq-line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--pq-dim);
+  text-decoration:none;font-size:10px;padding:8px 0 6px;min-height:58px;justify-content:center}
 .tabbar a svg{width:25px;height:25px}
-.tabbar a.on{color:var(--txt)}
+.tabbar a.on{color:var(--pq-ink)}
 @media(min-width:560px){.tabbar{max-width:520px;margin:0 auto;left:50%;transform:translateX(-50%);right:auto;width:100%}}
+.feedrow{border-left:3px solid var(--pq-line);padding-left:8px}
+.feed-ok{border-color:#198754}.feed-bad{border-color:#dc3545}.feed-warn{border-color:#fd7e14}

@@ -1,19 +1,41 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1976d2">
-<title>Security Center — PhantomQR</title><link rel="stylesheet" href="/web/style.css"></head>
-<body><div class="wrap">
-<div class="brand">PHANTOMQR SECURITY CENTER</div>
-<div class="nav"><a href="/">Home</a><a href="/staff/scanner">Scanner</a><a href="/attacks">Security Lab</a></div>
-<div class="card"><div class="grid g3">
-<div><div class="dim">Active Session</div><b id="sess">–</b><div class="dim" id="cr"></div></div>
-<div><div class="dim">Attendance</div><h2><span class="live" id="p">0</span> / <span id="e">0</span> <span class="dim">(<span id="pend">0</span> pending)</span></h2></div>
-<div><div class="dim">Security</div><div id="sec" class="mono">–</div></div>
-</div></div>
-<div class="grid g2" style="margin-top:12px">
-<div class="card"><h2>Live security event feed</h2><div class="feed" id="feed"></div></div>
-<div class="card"><h2>Attendance</h2><div class="feed" id="att"></div></div>
-</div></div>
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Activity — PhantomQR</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol px-0">
+<div class="bg-white border-bottom p-3">
+<div class="small text-muted">Active session</div>
+<h5 id="sess" class="mb-0">–</h5><div class="small text-muted" id="cr"></div>
+<div class="d-flex gap-3 mt-2">
+<div><b class="text-success fs-5" id="p">0</b> <small class="text-muted">/ <span id="e">0</span> (<span id="pend">0</span> pending)</small></div>
+<div class="small text-muted" id="sec">–</div>
+</div>
+</div>
+<div class="p-3">
+<h6 class="text-muted">Security activity</h6>
+<div id="feed" class="d-flex flex-column"></div>
+<h6 class="text-muted mt-3">Attendance</h6>
+<div id="att" class="d-flex flex-column"></div>
+</div>
+</div>
+<nav class="tabbar">
+<a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
+<a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
+<a href="/staff/scanner" data-p="/staff/scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg><span>Scan</span></a>
+<a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
+<a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
+</nav>
+<script src="/web/bootstrap.bundle.min.js"></script>
 <script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
 async function load(){
   const sid=localStorage.getItem('pq_session')||'';
   const r=await fetch('/api/dashboard?session_id='+encodeURIComponent(sid));const j=await r.json();
@@ -22,18 +44,11 @@ async function load(){
   document.getElementById('p').textContent=j.present;document.getElementById('e').textContent=j.expected;
   document.getElementById('pend').textContent=j.pending;
   document.getElementById('sec').textContent='replays='+j.replays+' tamper='+j.tampering+' bad-device='+j.invalidDevices+' unauth='+j.unauth;
-  const col=t=>t==='ACCEPTED'?'ok-b':(t==='INVALID_MAC'||t==='INVALID_STAFF'||t.startsWith('REPLAY')?'bad-b':'warn-b');
+  const col=t=>t==='ACCEPTED'?'feed-ok':(t==='INVALID_MAC'||t==='INVALID_STAFF'||t==='FORBIDDEN'||t.startsWith('REPLAY')?'feed-bad':'feed-warn');
   const tm=t=>new Date(t*1000).toLocaleTimeString();
-  document.getElementById('feed').innerHTML=(j.feed||[]).map(e=>'<div class="row '+col(e.type)+'"><span><b>'+e.type+'</b> '+(e.sid||'')+'</span><span class="dim">'+tm(e.at)+'</span></div>').join('')||'<span class="dim">No events yet.</span>';
-  document.getElementById('att').innerHTML=(j.attendance||[]).map(a=>'<div class="row ok-b"><span>✓ '+a.sid+' <span class="dim">ctr='+a.ctr+'</span></span><span class="dim">'+tm(a.at)+'</span></div>').join('')||'<span class="dim">Nobody marked yet.</span>';
+  document.getElementById('feed').innerHTML=(j.feed||[]).map(e=>'<div class="feedrow '+col(e.type)+'"><b>'+e.type+'</b> '+(e.sid||'')+' <span class="text-muted">· '+tm(e.at)+'</span></div>').join('')||'<span class="text-muted">No events yet.</span>';
+  document.getElementById('att').innerHTML=(j.attendance||[]).map(a=>'<div class="feedrow feed-ok">✓ '+a.sid+' <span class="text-muted">ctr='+a.ctr+' · '+tm(a.at)+'</span></div>').join('')||'<span class="text-muted">Nobody marked yet.</span>';
 }
 load();setInterval(load,3000);
-</script></div>
-<nav class="tabbar">
-<a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
-<a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
-<a href="/staff/scanner" data-p="/staff/scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg><span>Scan</span></a>
-<a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
-<a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
-</nav>
-<script>document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});</script></body></html>
+</script>
+</body></html>
