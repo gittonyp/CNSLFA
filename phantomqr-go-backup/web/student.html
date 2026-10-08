@@ -1,0 +1,129 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>My QR — PhantomQR</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
+<script src="/web/qrcode.min.js"></script>
+<script src="/web/sha256.min.js"></script>
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol py-3">
+<div id="who" class="card" style="display:none"><div class="card-body">
+<h5 class="card-title">Enroll this device</h5>
+<p class="text-muted small">One step — your secure key is created and your QR appears.</p>
+<label class="form-label">Student ID</label><input id="esid" class="form-control" value="21BT0451">
+<label class="form-label mt-2">Student Name</label><input id="ename" class="form-control" value="Priya">
+<button class="btn btn-primary w-100 mt-3" id="ego">Enroll + show my QR</button>
+<div id="eout" class="mt-2"></div>
+</div></div>
+<div id="box" class="card" style="display:none">
+<div class="card-body">
+<div class="d-flex align-items-center gap-2">
+<div class="av sm"><div id="avatarIni">?</div></div>
+<div><b id="nm"></b><br><small class="text-muted" id="ids"></small></div>
+<span class="badge text-bg-success ms-auto">● LIVE</span>
+</div>
+<div class="small text-muted mt-1" id="backend"></div>
+<div id="err" class="alert alert-danger mt-2" style="display:none"></div>
+<h6 class="mt-2 text-muted">YOUR AUTHENTICATION TOKEN</h6>
+<div id="qrbox"><div id="qr"></div></div>
+<div class="d-flex align-items-center gap-3">
+<span class="badge rounded-pill text-bg-primary fs-6" id="cd">15</span>
+<div><div class="small text-muted">Rotates in <b id="cd2">15</b>s · Counter <b id="ctr">–</b></div>
+<div class="small text-muted">HMAC-SHA256 · 15s rotation · 60s server validity</div></div>
+</div>
+<div class="mono mt-2" id="tok"></div>
+<button class="btn btn-outline-secondary btn-sm mt-2" id="dbg">Developer: show key fingerprint</button>
+<div class="mono mt-1" id="fp" style="display:none"></div>
+<p class="text-danger mt-2 mb-0">DO NOT screenshot or share this code.</p>
+</div>
+</div>
+</div>
+<nav class="tabbar">
+<a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
+<a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
+<a href="/staff/scanner" data-p="/staff/scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg><span>Scan</span></a>
+<a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
+<a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
+</nav>
+<script src="/web/bootstrap.bundle.min.js"></script>
+<script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
+// Token: {sid,did,ctr,ts,nonce,mac}; canonical sid|did|ctr|ts|nonce.
+// ts=freshness, ctr=monotonic ordering (catches replays inside the 60s window).
+// NOTE: crypto.subtle only exists in secure contexts (localhost/HTTPS). Over plain
+// HTTP via LAN IP (the normal phone-demo setup) we fall back to the vendored
+// pure-JS sha256.hmac — same HMAC-SHA256 math, no WebCrypto.
+const $=id=>document.getElementById(id);
+function fail(m){const e=$('err');e.style.display='block';e.textContent='⚠ '+m;}
+const sid=localStorage.getItem('pq_sid'),did=localStorage.getItem('pq_did'),
+      keyHex=localStorage.getItem('pq_key'),name=localStorage.getItem('pq_name');
+if(!sid||!did||!keyHex){
+  $('who').style.display='block'; // inline enroll lives on this same page
+  $('ego').onclick=async()=>{
+    const r=await fetch('/api/student/enroll',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sid:$('esid').value.trim(),name:$('ename').value.trim()})});
+    const j=await r.json();
+    if(!r.ok){$('eout').innerHTML='<div class="alert alert-danger">'+(j.error||'enroll failed')+'</div>';return;}
+    localStorage.setItem('pq_sid',j.sid);localStorage.setItem('pq_name',j.name);
+    localStorage.setItem('pq_did',j.did);localStorage.setItem('pq_key',j.secret_key);
+    localStorage.setItem('pq_ctr_'+j.sid+'_'+j.did,'0');
+    location.reload();
+  };
+}else{
+  $('who').style.display='none';$('box').style.display='block';
+  $('nm').textContent=name||sid;$('ids').textContent=sid+' · Device '+did;
+  $('avatarIni').textContent=(name||sid||'?').trim().charAt(0).toUpperCase();
+  const hex2bytes=h=>new Uint8Array(h.match(/../g).map(b=>parseInt(b,16)));
+  const b2hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+  const keyBytes=hex2bytes(keyHex);
+  const useSubtle=!!(window.crypto&&crypto.subtle);
+  $('backend').textContent='crypto: '+(useSubtle?'WebCrypto (secure context)':'JS fallback (insecure context — same HMAC-SHA256 math)');
+  let subtleKey=null;
+  if(useSubtle){crypto.subtle.importKey('raw',keyBytes,{name:'HMAC',hash:'SHA-256'},false,['sign']).then(k=>subtleKey=k).catch(e=>fail('key import: '+e));}
+  async function hmacHex(msg){
+    if(useSubtle){
+      if(!subtleKey)throw new Error('crypto key not ready yet');
+      return b2hex(await crypto.subtle.sign('HMAC',subtleKey,new TextEncoder().encode(msg)));
+    }
+    if(typeof sha256==='undefined'||!sha256.hmac)throw new Error('fallback HMAC lib missing');
+    return sha256.hmac([...keyBytes],msg); // ASCII canonical: encoding-independent
+  }
+  const ck='pq_ctr_'+sid+'_'+did;
+  let left=0,started=false;
+  async function fresh(){
+    try{
+      if(!window.crypto||!crypto.getRandomValues)throw new Error('no secure randomness on this browser');
+      const ctr=parseInt(localStorage.getItem(ck)||'0',10)+1;
+      localStorage.setItem(ck,String(ctr));
+      const ts=Math.floor(Date.now()/1000);
+      const nonce=b2hex(crypto.getRandomValues(new Uint8Array(16)));
+      const canon=[sid,did,ctr,ts,nonce].join('|');
+      const mac=await hmacHex(canon);
+      const tok={sid,did,ctr,ts,nonce,mac};
+      const s=JSON.stringify(tok);
+      try{
+        $('qr').innerHTML='';
+        new QRCode($('qr'),{text:s,width:300,height:300,correctLevel:QRCode.CorrectLevel.M});
+      }catch(e){throw new Error('QR render failed: '+e.message);}
+      $('tok').textContent=s;$('ctr').textContent=ctr;left=15;
+      $('err').style.display='none';
+      window._lastToken=tok;
+    }catch(e){fail(e.message||e);}
+  }
+  $('dbg').onclick=async()=>{
+    try{
+      const fp=useSubtle?b2hex(await crypto.subtle.digest('SHA-256',keyBytes)).slice(0,12):sha256([...keyBytes]).slice(0,12);
+      $('fp').style.display='block';$('fp').textContent='key fp: '+fp+'  (full key never displayed)';
+    }catch(e){fail('fingerprint: '+(e.message||e));}
+  };
+  setInterval(()=>{if(!started)return;left--;if(left<=0){fresh();return;}$('cd').textContent=left;$('cd2').textContent=left;},1000);
+  const iv=setInterval(()=>{if(useSubtle&&!subtleKey)return;clearInterval(iv);started=true;fresh();},200);
+}
+</script>
+</body></html>

@@ -1,0 +1,82 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Security Lab — PhantomQR</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol py-3">
+<h5>Attack demonstrations</h5>
+<p class="text-muted fst-italic small">Every button calls the real <span class="mono">POST /api/attendance/scan</span>. Nothing is faked.</p>
+<div id="need" class="alert alert-warning" style="display:none">Enroll a student, login staff (ST04/demo123), and open a session first.</div>
+<div id="lab" class="d-flex flex-column gap-3"></div>
+</div>
+<nav class="tabbar">
+<a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
+<a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
+<a href="/staff/scanner" data-p="/staff/scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg><span>Scan</span></a>
+<a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
+<a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
+</nav>
+<script src="/web/bootstrap.bundle.min.js"></script>
+<script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
+const hex=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(x=>x.toString(16).padStart(2,'0')).join('');
+const hex2bytes=h=>new Uint8Array(h.match(/../g).map(b=>parseInt(b,16)));
+const b2hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+async function hmac(keyHex,msg){
+  const k=await crypto.subtle.importKey('raw',hex2bytes(keyHex),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  return b2hex(await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(msg)));
+}
+async function scan(token,staffOverride){
+  const r=await fetch('/api/attendance/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({token,session_id:localStorage.getItem('pq_session')||'',
+      staff_session_token:staffOverride!==undefined?staffOverride:(localStorage.getItem('pq_staff')||''),
+      scanned_at:Math.floor(Date.now()/1000)})});
+  return {code:r.status,body:await r.json()};
+}
+async function validToken(){
+  const sid=localStorage.getItem('pq_sid'),did=localStorage.getItem('pq_did'),key=localStorage.getItem('pq_key');
+  const ck='pq_ctr_'+sid+'_'+did;const ctr=parseInt(localStorage.getItem(ck)||'0',10)+1;localStorage.setItem(ck,String(ctr));
+  const ts=Math.floor(Date.now()/1000),nonce=hex(16);
+  const mac=await hmac(key,[sid,did,ctr,ts,nonce].join('|'));
+  return {sid,did,ctr,ts,nonce,mac};
+}
+const attacks=[
+ {id:'replay',t:'Attack 1 — Screenshot / old QR replay',d:'Submit one valid token twice. First ACCEPTED, second blocked by nonce/counter.',
+  run:async()=>{const a=await validToken();const r1=await scan(a);const r2=await scan(a);
+    return '1st: '+r1.body.status+' — '+r1.body.message+'\n2nd: '+r2.body.status+' — '+r2.body.message+(r2.body.status.includes('REPLAY')||r2.body.status.includes('DUPLICATE')?'\n✓ REPLAY ATTACK BLOCKED':'\n✕ UNEXPECTED');}},
+ {id:'tamper',t:'Attack 2 — QR payload tampering',d:'Take valid token, bump counter without re-signing. Must fail INVALID_MAC.',
+  run:async()=>{const a=await validToken();a.ctr=a.ctr+100;const r=await scan(a);
+    return 'Result: '+r.body.status+' — '+r.body.message+(r.body.status==='INVALID_MAC'?'\n✓ TAMPERING DETECTED':'\n✕ UNEXPECTED');}},
+ {id:'fake',t:'Attack 3 — Fake QR without secret',d:'Attacker invents token + random MAC. Must fail INVALID_MAC.',
+  run:async()=>{const sid=localStorage.getItem('pq_sid')||'21BT0451',did=localStorage.getItem('pq_did')||'d7f3';
+    const a={sid,did,ctr:99999,ts:Math.floor(Date.now()/1000),nonce:hex(16),mac:hex(32)};const r=await scan(a);
+    return 'Result: '+r.body.status+' — '+r.body.message+(r.body.status==='INVALID_MAC'?'\n✓ FORGED TOKEN BLOCKED':'\n✕ UNEXPECTED');}},
+ {id:'dup',t:'Attack 4 — Duplicate attendance',d:'Same student, two fresh tokens, same session. Second blocked DUPLICATE_ATTENDANCE.',
+  run:async()=>{const a=await validToken();const r1=await scan(a);const b=await validToken();const r2=await scan(b);
+    return '1st: '+r1.body.status+'\n2nd: '+r2.body.status+' — '+r2.body.message+(r2.body.status==='DUPLICATE_ATTENDANCE'||r2.body.status.includes('REPLAY')?'\n✓ ALREADY MARKED PRESENT (duplicate blocked)':'\n(note: if 1st was already duplicate, enroll fresh student and retry)');}},
+ {id:'remote',t:'Attack 5 — Remote / unauthorized submission',d:'POST with no (or bogus) staff session. Must fail INVALID_STAFF even with a valid token.',
+  run:async()=>{const a=await validToken();const r=await scan(a,'');
+    return 'No-creds result: '+r.body.status+' — '+r.body.message+(r.body.status==='INVALID_STAFF'?'\n✓ REMOTE SUBMISSION BLOCKED':'\n✕ UNEXPECTED');}},
+ {id:'role',t:'Attack 6 — Staff tries admin reset',d:'RBAC: staff role calls admin-only reset. Must fail 403 FORBIDDEN.',
+  run:async()=>{const r=await fetch('/api/admin/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_session_token:localStorage.getItem('pq_staff')||''})});
+    const j=await r.json();
+    return 'Result: '+r.status+' '+(j.status||'')+' — '+(j.error||JSON.stringify(j))+((r.status===403)?'\n✓ RBAC BLOCKED (login as ADMIN to allow)':'\n(note: login as staff ST04 to see the block)');}},
+];
+const lab=document.getElementById('lab');
+attacks.forEach(a=>{
+  const d=document.createElement('div');d.className='card';
+  d.innerHTML='<div class="card-body"><h6>'+a.t+'</h6><p class="text-muted small">'+a.d+'</p><button class="btn btn-danger">RUN ATTACK</button><pre class="mono mt-2">not run yet</pre></div>';
+  d.querySelector('button').onclick=async ev=>{ev.target.textContent='RUNNING…';try{d.querySelector('pre').textContent=await a.run();}catch(e){d.querySelector('pre').textContent='error: '+e;}ev.target.textContent='RUN ATTACK';};
+  lab.appendChild(d);
+});
+if(!localStorage.getItem('pq_sid')||!localStorage.getItem('pq_staff')||!localStorage.getItem('pq_session'))
+  document.getElementById('need').style.display='block';
+</script>
+</body></html>

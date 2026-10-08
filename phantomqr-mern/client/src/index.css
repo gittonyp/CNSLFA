@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+:root {
+  --pq-bg: #0b1020;
+  --pq-card: rgba(255, 255, 255, 0.045);
+  --pq-line: rgba(255, 255, 255, 0.1);
+}
+html { -webkit-tap-highlight-color: transparent; }
+body {
+  background:
+    radial-gradient(900px 480px at 15% -10%, #16295c, transparent),
+    radial-gradient(800px 480px at 95% 0%, #3b1470, transparent),
+    var(--pq-bg);
+  color: #e8eefc;
+  font-family: Inter, ui-sysytem-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+}
+.font-mono2 { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.glass {
+  background: var(--pq-card);
+  border: 1px solid var(--pq-line);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.35);
+}
+.grad-text {
+  background: linear-gradient(90deg, #38e1ff, #a78bfa, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.grad-ring {
+  background: conic-gradient(from 180deg, #38e1ff, #a78bfa, #f472b6, #38e1ff);
+  animation: spin 6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pop { 0% { transform: scale(0.92); opacity: 0.4; } 100% { transform: scale(1); opacity: 1; } }
+.pop { animation: pop 0.25s ease-out; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+input, select, textarea { font-size: 16px !important; } /* no iOS auto-zoom */
+.tabbar a.on { color: #fff; }
+.tabbar a.on svg { filter: drop-shadow(0 0 6px rgba(56, 225, 255, 0.8)); }
+video { border-radius: 1rem; }

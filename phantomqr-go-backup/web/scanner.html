@@ -1,0 +1,222 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Scanner — PhantomQR</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
+<script src="/web/jsQR.js"></script>
+<script src="/web/html5-qrcode.min.js"></script>
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol px-0" id="app" style="display:none">
+<div class="scanhead bg-white border-bottom px-3 py-2">
+<div><small class="text-muted d-block">Course</small><b id="c">–</b></div>
+<div><small class="text-muted d-block">Session</small><b id="s">–</b></div>
+<div><small class="text-muted d-block">Scanned</small><b id="n">0</b></div>
+<div class="text-end"><button class="btn btn-sm btn-outline-secondary" id="logout">Logout</button></div>
+</div>
+<div class="p-3">
+<label class="form-label">Session <span class="text-muted">(pick by name — IDs are automatic)</span></label>
+<div class="d-flex gap-2">
+<select id="sess" class="form-select"></select>
+<button class="btn btn-outline-primary" id="newbtn" type="button">＋</button>
+</div>
+<div id="newform" style="display:none" class="border rounded p-2 mt-2">
+<label class="form-label">Session name (required)</label><input id="nn" class="form-control" placeholder="CNS-601 · Morning">
+<div class="row g-2"><div class="col"><label class="form-label mt-2">Course</label><input id="nc" class="form-control" value="CNS-601"></div>
+<div class="col"><label class="form-label mt-2">Room</label><input id="nr" class="form-control" value="A-204"></div></div>
+<button class="btn btn-primary w-100 mt-2" id="create">Create + use</button>
+</div>
+<div id="reader" class="mt-2"></div>
+<button class="btn btn-primary btn-lg w-100 mt-2" id="cam">◎ Start scanner</button>
+<div id="last" class="alert mt-2" style="display:none"></div>
+<div class="mono mt-2" id="net">Queued offline: 0 · Server: ● Connected</div>
+<details class="mt-2"><summary class="text-muted">No camera? Manual fallback (paste / upload)</summary>
+<label class="form-label mt-2">Paste student token JSON</label>
+<textarea id="paste" class="form-control" rows="3" placeholder='{"sid":"21BT0451",...}'></textarea>
+<button class="btn btn-outline-primary mt-2" id="go">Submit pasted token</button>
+<label class="form-label mt-2">Or upload QR image (decoded on-device)</label>
+<input id="file" class="form-control" type="file" accept="image/*">
+</details>
+<p class="text-muted small mt-2">Camera needs localhost or HTTPS (browser rule). Over plain HTTP LAN IP, use the manual fallback — same API, same verdicts.</p>
+</div>
+</div>
+<div class="container appcol py-5 text-center" id="lock" style="display:none">
+<h2>Staff only</h2>
+<p class="text-muted">The scanner needs a staff login. Students cannot scan or submit attendance — the API rejects them.</p>
+<a class="btn btn-primary" href="/staff/login">Staff login</a>
+</div>
+<nav class="tabbar">
+<a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
+<a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
+<a href="/staff/scanner" data-p="/staff/scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg><span>Scan</span></a>
+<a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
+<a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
+</nav>
+<script src="/web/bootstrap.bundle.min.js"></script>
+<script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
+const $=id=>document.getElementById(id);
+// ---- Staff gate: students (or logged-out browsers) see the lock screen ----
+(async()=>{
+  const t=localStorage.getItem('pq_staff')||'';
+  let me=null;
+  if(t){try{const r=await fetch('/api/staff/me?staff_session_token='+encodeURIComponent(t));const j=await r.json();if(r.ok&&j.ok)me=j;}catch(e){}}
+  if(!me){
+    localStorage.removeItem('pq_staff');localStorage.removeItem('pq_role');
+    $('lock').style.display='block';return;
+  }
+  $('app').style.display='block';
+  $('whoami').textContent=me.staff_id+' ('+me.role+')';
+})();
+// Offline queue (localStorage). server time decides validity on arrival;
+// scanner-reported scanned_at is informational only.
+const Q=JSON.parse(localStorage.getItem('pq_queue')||'[]');
+let accepted=parseInt(localStorage.getItem('pq_accepted')||'0',10);
+function saveQ(){localStorage.setItem('pq_queue',JSON.stringify(Q));paintQ();}
+function paintQ(){
+  $('net').textContent='Queued offline: '+Q.length+' · Server: '+(navigator.onLine?'● Connected':'○ Offline');
+  $('n').textContent=accepted;
+}
+paintQ();window.addEventListener('online',flush);window.addEventListener('offline',paintQ);
+async function flush(){
+  const staff=localStorage.getItem('pq_staff')||'';
+  if(!staff)return;
+  while(Q.length){
+    const e=Q[0];
+    try{
+      const r=await fetch('/api/attendance/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token:e.token,session_id:e.session_id,staff_session_token:staff,scanned_at:e.scanned_at})});
+      show(await r.json(),true);
+      Q.shift();saveQ();
+    }catch(err){paintQ();break;}
+  }
+}
+setInterval(flush,5000);
+function show(j,queued){
+  const el=$('last');el.style.display='block';
+  el.className='alert mt-2 '+(j.success?'alert-success':'alert-danger');
+  el.innerHTML='<b>'+(j.success?'✓ ':'✕ ')+(j.student||j.status)+'</b><br>'+(j.message||'')+
+    '<div class="small">'+j.status+' · '+(queued?'from offline queue':'live')+'</div>';
+  if(j.success){
+    accepted++;localStorage.setItem('pq_accepted',String(accepted));paintQ();
+    if(navigator.vibrate)navigator.vibrate(60);
+  }
+  el.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+let lastPayload='',lastAt=0,cooling=false;
+// Session IDs are S-XXXX uppercase; normalize hand-typed input and verify the
+// session actually exists before burning a scan on it (stale IDs after a DB
+// reset otherwise fail with a cryptic INVALID_SESSION).
+async function checkSession(){
+  const v=$('sess').value.trim().toUpperCase();
+  if(!v){$('c').textContent='–';$('s').textContent='–';return null;}
+  try{
+    const r=await fetch('/api/dashboard?session_id='+encodeURIComponent(v));
+    const j=await r.json();
+    if(j.course){$('c').textContent=j.course+(j.room?' / '+j.room:'');$('s').textContent=v+(j.status&&j.status!=='OPEN'?' ('+j.status+')':'');$('sess').value=v;return v;}
+  }catch(e){}
+  $('c').textContent='unknown session';$('s').textContent=v;
+  return null;
+}
+async function submit(tok){
+  const staff=localStorage.getItem('pq_staff')||'';
+  if(!staff){show({success:false,status:'ERROR',message:'Staff login required at /staff/login.'});return;}
+  const sid=await checkSession();
+  if(!sid){show({success:false,status:'INVALID_SESSION',message:'No session selected — pick one above or tap ＋ to create it.'});return;}
+  let token=tok;
+  if(typeof token==='string'){try{token=JSON.parse(token);}catch(e){show({success:false,status:'ERROR',message:'Not valid token JSON.'});return;}}
+  // Seamless mode: skip accidental double-reads of the same QR frame burst.
+  const now=Date.now(),raw=typeof tok==='string'?tok:JSON.stringify(tok);
+  if(raw===lastPayload&&now-lastAt<10000&&cooling)return;
+  lastPayload=raw;lastAt=now;cooling=true;setTimeout(()=>cooling=false,2000);
+  try{
+    const r=await fetch('/api/attendance/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token,session_id:sid,staff_session_token:staff,scanned_at:Math.floor(now/1000)})});
+    show(await r.json(),false);
+  }catch(e){
+    Q.push({token,session_id:sid,scanned_at:Math.floor(now/1000),queued_at:now});saveQ();
+    const el=$('last');el.style.display='block';el.className='alert alert-warning mt-2';
+    el.innerHTML='<b>○ Offline — scan queued ('+Q.length+')</b>';
+  }
+}
+// ---- Continuous camera scan: point, auto-submit on every decode ----
+let scanning=false,hl=null;
+$('cam').onclick=async()=>{
+  if(typeof Html5Qrcode==='undefined'){$('cam').textContent='Camera lib failed to load — use manual fallback';return;}
+  if(scanning){try{await hl.stop();}catch(e){}scanning=false;$('cam').textContent='◎ Start scanner';return;}
+  try{
+    hl=new Html5Qrcode('reader');
+    await hl.start({facingMode:'environment'},{fps:10,qrbox:function(w,h){const s=Math.min(w,h)*0.75;return{width:s,height:s};}},(txt)=>submit(txt));
+    scanning=true;$('cam').textContent='■ Stop scanner';
+  }catch(e){
+    show({success:false,status:'ERROR',message:'Camera blocked: '+(e.message||e)+'. Use localhost/HTTPS or the manual fallback.'});
+  }
+};
+$('logout').onclick=async()=>{
+  const t=localStorage.getItem('pq_staff')||'';
+  try{await fetch('/api/staff/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_session_token:t})});}catch(e){}
+  localStorage.removeItem('pq_staff');localStorage.removeItem('pq_role');
+  location.reload();
+};
+$('go').onclick=()=>submit($('paste').value);
+// Picker: sessions by name from the server; the ID stays hidden in localStorage.
+async function loadSessions(){
+  const staff=localStorage.getItem('pq_staff')||'';
+  const sel=$('sess');sel.innerHTML='';
+  let list=[];
+  if(staff){
+    try{
+      const r=await fetch('/api/sessions?open=1&staff_session_token='+encodeURIComponent(staff));
+      const j=await r.json();if(r.ok)list=j.sessions||[];
+    }catch(e){}
+  }
+  const saved=localStorage.getItem('pq_session')||'';
+  list.forEach(s=>{
+    const o=document.createElement('option');
+    o.value=s.session_id;o.textContent=s.name+' — '+s.course+' ('+s.present+' present)';
+    sel.appendChild(o);
+  });
+  if(!list.length){
+    const o=document.createElement('option');o.value='';o.textContent='No open sessions — tap ＋ to create one';
+    sel.appendChild(o);
+  }
+  if(saved&&[...sel.options].some(o=>o.value===saved))sel.value=saved;
+  else if(sel.value){localStorage.setItem('pq_session',sel.value);}
+  checkSession();
+}
+$('sess').onchange=()=>{localStorage.setItem('pq_session',$('sess').value);checkSession();};
+$('newbtn').onclick=()=>{const f=$('newform');f.style.display=f.style.display==='none'?'block':'none';};
+$('create').onclick=async()=>{
+  const staff=localStorage.getItem('pq_staff')||'';
+  const name=$('nn').value.trim();
+  if(!name){show({success:false,status:'ERROR',message:'Session name is required.'});return;}
+  const r=await fetch('/api/session/open',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,course:$('nc').value,room:$('nr').value,start:'',end:'',staff_session_token:staff})});
+  const j=await r.json();
+  if(!r.ok){show({success:false,status:'ERROR',message:j.error||'create failed'});return;}
+  localStorage.setItem('pq_session',j.session_id);
+  $('newform').style.display='none';$('nn').value='';
+  await loadSessions();
+};
+loadSessions();
+window.addEventListener('focus',loadSessions);
+$('file').onchange=()=>{
+  const f=$('file').files[0];if(!f)return;
+  const img=new Image();img.onload=()=>{
+    const cv=document.createElement('canvas');cv.width=img.width;cv.height=img.height;
+    const cx=cv.getContext('2d');cx.drawImage(img,0,0);
+    const d=cx.getImageData(0,0,cv.width,cv.height);
+    const code=jsQR(d.data,cv.width,cv.height);
+    if(code){$('paste').value=code.data;submit(code.data);}
+    else show({success:false,status:'ERROR',message:'No QR found in image.'});
+    URL.revokeObjectURL(img.src);
+  };
+  img.src=URL.createObjectURL(f);
+};
+</script>
+</body></html>

@@ -1,0 +1,73 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Session — PhantomQR</title>
+<link rel="stylesheet" href="/web/bootstrap.min.css">
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<nav class="navbar pq-top sticky-top"><div class="container-fluid appcol">
+<a class="navbar-brand fw-bold" href="/">phantomqr</a>
+<span class="navbar-text" id="whoami"></span>
+</div></nav>
+<div class="container appcol py-3" id="app" style="display:none">
+<div class="card"><div class="card-body">
+<h5 class="card-title">Class session</h5>
+<p class="text-muted small">Give it a name — the ID is created automatically. No session exists without a name.</p>
+<label class="form-label">Session name (required)</label><input id="nm" class="form-control" placeholder="CNS-601 · Morning batch">
+<label class="form-label mt-2">Course</label><input id="c" class="form-control" value="CNS-601">
+<label class="form-label mt-2">Room</label><input id="r" class="form-control" value="A-204">
+<div class="row g-2"><div class="col"><label class="form-label mt-2">Start</label><input id="s" class="form-control" value="10:00"></div>
+<div class="col"><label class="form-label mt-2">End</label><input id="e" class="form-control" value="10:10"></div></div>
+<button class="btn btn-primary w-100 mt-3" id="go">Open attendance session</button>
+<button class="btn btn-outline-secondary w-100 mt-2" id="close">Close this session</button>
+<div id="out" class="mt-2"></div>
+</div></div>
+</div>
+<div class="container appcol py-5 text-center" id="lock" style="display:none">
+<h2>Staff only</h2>
+<p class="text-muted">Sessions can only be opened by logged-in staff.</p>
+<a class="btn btn-primary" href="/staff/login">Staff login</a>
+</div>
+<nav class="tabbar">
+<a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
+<a href="/student" data-p="/student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg><span>My QR</span></a>
+<a href="/staff/scanner" data-p="/staff/scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg><span>Scan</span></a>
+<a href="/dashboard" data-p="/dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2 0 3.4 1.1 4 2.2.6-1.1 2-2.2 4-2.2 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg><span>Activity</span></a>
+<a href="/attacks" data-p="/attacks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6.3L4.7 18a2 2 0 0 0 1.8 3h11a2 2 0 0 0 1.8-3L14 9.3V3"/></svg><span>Lab</span></a>
+</nav>
+<script src="/web/bootstrap.bundle.min.js"></script>
+<script>
+document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
+const $=id=>document.getElementById(id);
+(async()=>{
+  const t=localStorage.getItem('pq_staff')||'';
+  let me=null;
+  if(t){try{const r=await fetch('/api/staff/me?staff_session_token='+encodeURIComponent(t));const j=await r.json();if(r.ok&&j.ok)me=j;}catch(e){}}
+  if(!me){localStorage.removeItem('pq_staff');$('lock').style.display='block';return;}
+  $('app').style.display='block';
+  $('whoami').textContent=me.staff_id+' ('+me.role+')';
+})();
+$('go').onclick=async()=>{
+  const staff=localStorage.getItem('pq_staff')||'';
+  if(!staff){$('out').innerHTML='<div class="alert alert-danger">Login first at /staff/login.</div>';return;}
+  const name=$('nm').value.trim();
+  if(!name){$('out').innerHTML='<div class="alert alert-danger">Session name is required.</div>';return;}
+  const r=await fetch('/api/session/open',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,course:$('c').value,room:$('r').value,start:$('s').value,end:$('e').value,staff_session_token:staff})});
+  const j=await r.json();
+  if(!r.ok){$('out').innerHTML='<div class="alert alert-danger">'+(j.error||JSON.stringify(j))+'</div>';return;}
+  localStorage.setItem('pq_session',j.session_id);
+  $('out').innerHTML='<div class="alert alert-success">“'+j.name+'” OPEN</div><div class="mono">ID '+j.session_id+' created automatically<br><a href="/staff/scanner">→ Open scanner</a></div>';
+};
+$('close').onclick=async()=>{
+  const staff=localStorage.getItem('pq_staff')||'';
+  const sid=(localStorage.getItem('pq_session')||'').trim();
+  if(!staff||!sid){$('out').innerHTML='<div class="alert alert-danger">Need staff login + session_id.</div>';return;}
+  const r=await fetch('/api/session/close',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({session_id:sid,staff_session_token:staff})});
+  const j=await r.json();
+  $('out').innerHTML=r.ok?'<div class="alert alert-secondary">Session '+sid+' CLOSED</div>':'<div class="alert alert-danger">'+(j.error||JSON.stringify(j))+'</div>';
+};
+</script>
+</body></html>
