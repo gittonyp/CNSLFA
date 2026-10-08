@@ -20,8 +20,17 @@
 <div class="text-end"><button class="btn btn-sm btn-outline-secondary" id="logout">Logout</button></div>
 </div>
 <div class="p-3">
-<label class="form-label">Session ID</label>
-<input id="sess" class="form-control" placeholder="S-XXXX" autocomplete="off">
+<label class="form-label">Session <span class="text-muted">(pick by name — IDs are automatic)</span></label>
+<div class="d-flex gap-2">
+<select id="sess" class="form-select"></select>
+<button class="btn btn-outline-primary" id="newbtn" type="button">＋</button>
+</div>
+<div id="newform" style="display:none" class="border rounded p-2 mt-2">
+<label class="form-label">Session name (required)</label><input id="nn" class="form-control" placeholder="CNS-601 · Morning">
+<div class="row g-2"><div class="col"><label class="form-label mt-2">Course</label><input id="nc" class="form-control" value="CNS-601"></div>
+<div class="col"><label class="form-label mt-2">Room</label><input id="nr" class="form-control" value="A-204"></div></div>
+<button class="btn btn-primary w-100 mt-2" id="create">Create + use</button>
+</div>
 <div id="reader" class="mt-2"></div>
 <button class="btn btn-primary btn-lg w-100 mt-2" id="cam">◎ Start scanner</button>
 <div id="last" class="alert mt-2" style="display:none"></div>
@@ -118,7 +127,7 @@ async function submit(tok){
   const staff=localStorage.getItem('pq_staff')||'';
   if(!staff){show({success:false,status:'ERROR',message:'Staff login required at /staff/login.'});return;}
   const sid=await checkSession();
-  if(!sid){show({success:false,status:'INVALID_SESSION',message:'Unknown session — open a fresh one at /staff/session, then rescan.'});return;}
+  if(!sid){show({success:false,status:'INVALID_SESSION',message:'No session selected — pick one above or tap ＋ to create it.'});return;}
   let token=tok;
   if(typeof token==='string'){try{token=JSON.parse(token);}catch(e){show({success:false,status:'ERROR',message:'Not valid token JSON.'});return;}}
   // Seamless mode: skip accidental double-reads of the same QR frame burst.
@@ -155,14 +164,47 @@ $('logout').onclick=async()=>{
   location.reload();
 };
 $('go').onclick=()=>submit($('paste').value);
-$('sess').value=(localStorage.getItem('pq_session')||'').trim().toUpperCase();
-$('sess').onchange=()=>{localStorage.setItem('pq_session',$('sess').value.trim().toUpperCase());checkSession();};
-checkSession();
-window.addEventListener('focus',()=>{ // another tab may have opened a new session
-  const cur=(localStorage.getItem('pq_session')||'').trim().toUpperCase();
-  if(cur&&cur!==$('sess').value.trim().toUpperCase())$('sess').value=cur;
+// Picker: sessions by name from the server; the ID stays hidden in localStorage.
+async function loadSessions(){
+  const staff=localStorage.getItem('pq_staff')||'';
+  const sel=$('sess');sel.innerHTML='';
+  let list=[];
+  if(staff){
+    try{
+      const r=await fetch('/api/sessions?open=1&staff_session_token='+encodeURIComponent(staff));
+      const j=await r.json();if(r.ok)list=j.sessions||[];
+    }catch(e){}
+  }
+  const saved=localStorage.getItem('pq_session')||'';
+  list.forEach(s=>{
+    const o=document.createElement('option');
+    o.value=s.session_id;o.textContent=s.name+' — '+s.course+' ('+s.present+' present)';
+    sel.appendChild(o);
+  });
+  if(!list.length){
+    const o=document.createElement('option');o.value='';o.textContent='No open sessions — tap ＋ to create one';
+    sel.appendChild(o);
+  }
+  if(saved&&[...sel.options].some(o=>o.value===saved))sel.value=saved;
+  else if(sel.value){localStorage.setItem('pq_session',sel.value);}
   checkSession();
-});
+}
+$('sess').onchange=()=>{localStorage.setItem('pq_session',$('sess').value);checkSession();};
+$('newbtn').onclick=()=>{const f=$('newform');f.style.display=f.style.display==='none'?'block':'none';};
+$('create').onclick=async()=>{
+  const staff=localStorage.getItem('pq_staff')||'';
+  const name=$('nn').value.trim();
+  if(!name){show({success:false,status:'ERROR',message:'Session name is required.'});return;}
+  const r=await fetch('/api/session/open',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,course:$('nc').value,room:$('nr').value,start:'',end:'',staff_session_token:staff})});
+  const j=await r.json();
+  if(!r.ok){show({success:false,status:'ERROR',message:j.error||'create failed'});return;}
+  localStorage.setItem('pq_session',j.session_id);
+  $('newform').style.display='none';$('nn').value='';
+  await loadSessions();
+};
+loadSessions();
+window.addEventListener('focus',loadSessions);
 $('file').onchange=()=>{
   const f=$('file').files[0];if(!f)return;
   const img=new Image();img.onload=()=>{

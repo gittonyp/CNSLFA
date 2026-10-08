@@ -13,7 +13,9 @@
 <div class="container appcol py-3" id="app" style="display:none">
 <div class="card"><div class="card-body">
 <h5 class="card-title">Class session</h5>
-<label class="form-label">Course</label><input id="c" class="form-control" value="CNS-601">
+<p class="text-muted small">Give it a name — the ID is created automatically. No session exists without a name.</p>
+<label class="form-label">Session name (required)</label><input id="nm" class="form-control" placeholder="CNS-601 · Morning batch">
+<label class="form-label mt-2">Course</label><input id="c" class="form-control" value="CNS-601">
 <label class="form-label mt-2">Room</label><input id="r" class="form-control" value="A-204">
 <div class="row g-2"><div class="col"><label class="form-label mt-2">Start</label><input id="s" class="form-control" value="10:00"></div>
 <div class="col"><label class="form-label mt-2">End</label><input id="e" class="form-control" value="10:10"></div></div>
@@ -49,12 +51,14 @@ const $=id=>document.getElementById(id);
 $('go').onclick=async()=>{
   const staff=localStorage.getItem('pq_staff')||'';
   if(!staff){$('out').innerHTML='<div class="alert alert-danger">Login first at /staff/login.</div>';return;}
+  const name=$('nm').value.trim();
+  if(!name){$('out').innerHTML='<div class="alert alert-danger">Session name is required.</div>';return;}
   const r=await fetch('/api/session/open',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({course:$('c').value,room:$('r').value,start:$('s').value,end:$('e').value,staff_session_token:staff})});
+    body:JSON.stringify({name,course:$('c').value,room:$('r').value,start:$('s').value,end:$('e').value,staff_session_token:staff})});
   const j=await r.json();
-  if(!r.ok){$('out').innerHTML='<div class="alert alert-danger">'+JSON.stringify(j)+'</div>';return;}
+  if(!r.ok){$('out').innerHTML='<div class="alert alert-danger">'+(j.error||JSON.stringify(j))+'</div>';return;}
   localStorage.setItem('pq_session',j.session_id);
-  $('out').innerHTML='<div class="alert alert-success">Session '+j.session_id+' OPEN</div><div class="mono">session_id: '+j.session_id+'<br><a href="/staff/scanner">→ Open scanner</a></div>';
+  $('out').innerHTML='<div class="alert alert-success">“'+j.name+'” OPEN</div><div class="mono">ID '+j.session_id+' created automatically<br><a href="/staff/scanner">→ Open scanner</a></div>';
 };
 $('close').onclick=async()=>{
   const staff=localStorage.getItem('pq_staff')||'';

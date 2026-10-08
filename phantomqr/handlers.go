@@ -460,6 +460,7 @@ func handleSessionOpen(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Course string `json:"course"`
 		Room   string `json:"room"`
+		Name   string `json:"name"`
 		Start  string `json:"start"`
 		End    string `json:"end"`
 		Staff  string `json:"staff_session_token"`
@@ -477,18 +478,24 @@ func handleSessionOpen(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "course and room required"})
 		return
 	}
-	if len(in.Course) > 64 || len(in.Room) > 64 || len(in.Start) > 16 || len(in.End) > 16 {
-		writeJSON(w, 400, map[string]any{"error": "course/room/start/end too long"})
+	// A session without a human name is not creatable: IDs are for machines.
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" {
+		writeJSON(w, 400, map[string]any{"error": "session name required (e.g. 'CNS-601 · Morning')"})
 		return
 	}
-	// session_id is 16-bit; retry on (rare) collision instead of failing.
+	if len(in.Course) > 64 || len(in.Room) > 64 || len(in.Name) > 64 || len(in.Start) > 16 || len(in.End) > 16 {
+		writeJSON(w, 400, map[string]any{"error": "course/room/name/start/end too long"})
+		return
+	}
+	// The ID is always server-generated; callers never supply one.
 	var sessionID string
 	now := time.Now().Unix()
 	for i := 0; i < 5; i++ {
 		sid, _ := RandomHex(2)
 		cand := "S-" + strings.ToUpper(sid)
-		if _, err := db.Exec(`INSERT INTO attendance_sessions(session_id,course,room,staff_id,staff_device_id,start_time,end_time,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-			cand, in.Course, in.Room, staffID, devID, in.Start, in.End, "OPEN", now); err == nil {
+		if _, err := db.Exec(`INSERT INTO attendance_sessions(session_id,name,course,room,staff_id,staff_device_id,start_time,end_time,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+			cand, in.Name, in.Course, in.Room, staffID, devID, in.Start, in.End, "OPEN", now); err == nil {
 			sessionID = cand
 			break
 		}
@@ -497,7 +504,47 @@ func handleSessionOpen(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": "could not allocate session id, retry"})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"session_id": sessionID, "status": "OPEN"})
+	writeJSON(w, 200, map[string]any{"session_id": sessionID, "name": in.Name, "status": "OPEN"})
+}
+
+// handleSessionList powers the pickers: users choose sessions by name,
+// never by typing IDs. Staff-only.
+func handleSessionList(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+	tok := r.URL.Query().Get("staff_session_token")
+	if _, _, code, errStatus, msg := requireRole(db, tok, "", "staff", "admin"); code != 0 {
+		writeJSON(w, code, map[string]any{"error": msg, "status": errStatus})
+		return
+	}
+	q := `SELECT session_id, name, course, room, status, created_at FROM attendance_sessions`
+	if r.URL.Query().Get("open") == "1" {
+		q += ` WHERE status='OPEN'`
+	}
+	q += ` ORDER BY id DESC LIMIT 50`
+	rows, err := db.Query(q)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "db error"})
+		return
+	}
+	type row struct {
+		id, name, course, room, status string
+		created                       int64
+	}
+	var all []row
+	for rows.Next() {
+		var r row
+		_ = rows.Scan(&r.id, &r.name, &r.course, &r.room, &r.status, &r.created)
+		all = append(all, r)
+	}
+	rows.Close()
+	// Counts run AFTER rows are closed: with a small connection pool a nested
+	// query inside the rows loop would deadlock waiting on itself.
+	out := []map[string]any{}
+	for _, r := range all {
+		var n int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM attendance WHERE session_id=?`, r.id).Scan(&n)
+		out = append(out, map[string]any{"session_id": r.id, "name": r.name, "course": r.course, "room": r.room, "status": r.status, "present": n})
+	}
+	writeJSON(w, 200, map[string]any{"sessions": out})
 }
 
 func handleSessionClose(db *sql.DB, w http.ResponseWriter, r *http.Request) {
@@ -553,9 +600,9 @@ func handleDashboard(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		// latest open session
 		_ = db.QueryRow(`SELECT session_id FROM attendance_sessions WHERE status='OPEN' ORDER BY id DESC LIMIT 1`).Scan(&sessionID)
 	}
-	var course, room, status string
+	var course, room, status, sname string
 	if sessionID != "" {
-		_ = db.QueryRow(`SELECT course, room, status FROM attendance_sessions WHERE session_id=?`, sessionID).Scan(&course, &room, &status)
+		_ = db.QueryRow(`SELECT course, room, status, name FROM attendance_sessions WHERE session_id=?`, sessionID).Scan(&course, &room, &status, &sname)
 	}
 	var present, expected int
 	_ = db.QueryRow(`SELECT COUNT(*) FROM attendance WHERE session_id=?`, sessionID).Scan(&present)
@@ -595,7 +642,7 @@ func handleDashboard(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 200, map[string]any{
-		"session": sessionID, "course": course, "room": room, "status": status,
+		"session": sessionID, "name": sname, "course": course, "room": room, "status": status,
 		"present": present, "expected": expected, "pending": max0(expected - present),
 		"replays":        count("REPLAY_NONCE") + count("REPLAY_COUNTER"),
 		"tampering":      count("INVALID_MAC"),

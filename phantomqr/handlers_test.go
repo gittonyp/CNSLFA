@@ -378,3 +378,31 @@ func TestBusinessFixes(t *testing.T) {
 		t.Fatalf("stale session: got %s", st)
 	}
 }
+
+func TestSessionNames(t *testing.T) {
+	f, done := setupFix(t)
+	defer done()
+	// nameless sessions are rejected; ID always comes from the server
+	code, b := postJSON(f.db, handleSessionOpen, `{"course":"C","room":"R","staff_session_token":"`+f.staffTok+`"}`)
+	if code != 400 || !strings.Contains(b, "name required") {
+		t.Fatalf("nameless: got %d %s", code, b)
+	}
+	code, b = postJSON(f.db, handleSessionOpen, `{"course":"C","room":"R","name":"Morning batch","staff_session_token":"`+f.staffTok+`"}`)
+	if code != 200 || !strings.Contains(b, "S-") {
+		t.Fatalf("named: got %d %s", code, b)
+	}
+	// picker list shows names
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions?open=1&staff_session_token="+f.staffTok, nil)
+	rec := httptest.NewRecorder()
+	handleSessionList(f.db, rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Morning batch") {
+		t.Fatalf("list: got %d %s", rec.Code, rec.Body.String())
+	}
+	// anonymous picker is refused
+	req = httptest.NewRequest(http.MethodGet, "/api/sessions?open=1", nil)
+	rec = httptest.NewRecorder()
+	handleSessionList(f.db, rec, req)
+	if rec.Code != 401 {
+		t.Fatalf("anon list: got %d", rec.Code)
+	}
+}

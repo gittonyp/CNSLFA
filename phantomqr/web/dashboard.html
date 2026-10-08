@@ -12,7 +12,8 @@
 </div></nav>
 <div class="container appcol px-0">
 <div class="bg-white border-bottom p-3">
-<div class="small text-muted">Active session</div>
+<div class="small text-muted">Session</div>
+<select id="pick" class="form-select mb-2"></select>
 <h5 id="sess" class="mb-0">–</h5><div class="small text-muted" id="cr"></div>
 <div class="d-flex gap-3 mt-2">
 <div><b class="text-success fs-5" id="p">0</b> <small class="text-muted">/ <span id="e">0</span> (<span id="pend">0</span> pending)</small></div>
@@ -36,11 +37,31 @@
 <script src="/web/bootstrap.bundle.min.js"></script>
 <script>
 document.querySelectorAll('.tabbar a').forEach(a=>{if(a.dataset.p===location.pathname)a.classList.add('on')});
+async function cur(){
+  return document.getElementById('pick').value||localStorage.getItem('pq_session')||'';
+}
+async function loadList(){
+  const staff=localStorage.getItem('pq_staff')||'';
+  const sel=document.getElementById('pick');sel.innerHTML='';
+  if(!staff)return;
+  try{
+    const r=await fetch('/api/sessions?staff_session_token='+encodeURIComponent(staff));
+    const j=await r.json();
+    (j.sessions||[]).forEach(s=>{
+      const o=document.createElement('option');
+      o.value=s.session_id;o.textContent=(s.name||s.session_id)+' — '+(s.status||'');
+      sel.appendChild(o);
+    });
+    const saved=localStorage.getItem('pq_session')||'';
+    if(saved&&[...sel.options].some(o=>o.value===saved))sel.value=saved;
+  }catch(e){}
+}
+document.getElementById('pick').onchange=e=>{localStorage.setItem('pq_session',e.target.value);load();};
 async function load(){
-  const sid=localStorage.getItem('pq_session')||'';
+  const sid=await cur();
   const r=await fetch('/api/dashboard?session_id='+encodeURIComponent(sid));const j=await r.json();
-  document.getElementById('sess').textContent=j.session||'(none — open a session)';
-  document.getElementById('cr').textContent=(j.course||'')+' '+(j.room||'')+' '+(j.status||'');
+  document.getElementById('sess').textContent=(j.name||j.session||'(none — open a session)');
+  document.getElementById('cr').textContent=(j.course||'')+' '+(j.room||'')+' '+(j.session||'')+' '+(j.status||'');
   document.getElementById('p').textContent=j.present;document.getElementById('e').textContent=j.expected;
   document.getElementById('pend').textContent=j.pending;
   document.getElementById('sec').textContent='replays='+j.replays+' tamper='+j.tampering+' bad-device='+j.invalidDevices+' unauth='+j.unauth;
@@ -49,6 +70,6 @@ async function load(){
   document.getElementById('feed').innerHTML=(j.feed||[]).map(e=>'<div class="feedrow '+col(e.type)+'"><b>'+e.type+'</b> '+(e.sid||'')+' <span class="text-muted">· '+tm(e.at)+'</span></div>').join('')||'<span class="text-muted">No events yet.</span>';
   document.getElementById('att').innerHTML=(j.attendance||[]).map(a=>'<div class="feedrow feed-ok">✓ '+a.sid+' <span class="text-muted">ctr='+a.ctr+' · '+tm(a.at)+'</span></div>').join('')||'<span class="text-muted">Nobody marked yet.</span>';
 }
-load();setInterval(load,3000);
+loadList().then(load);setInterval(load,3000);
 </script>
 </body></html>

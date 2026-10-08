@@ -118,7 +118,7 @@ func openDB(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1) // SQLite: single writer avoids "database is locked".
+	db.SetMaxOpenConns(4) // small pool: WAL allows concurrent readers; busy_timeout covers writer contention.
 	// Belt and suspenders for concurrent scanners: wait on locks, WAL mode.
 	_, _ = db.Exec(`PRAGMA busy_timeout = 5000`)
 	_, _ = db.Exec(`PRAGMA journal_mode = WAL`)
@@ -161,6 +161,19 @@ func openDB(path string) (*sql.DB, error) {
 	if err := seed("ADMIN", "Demo Admin", "admin123", "admin"); err != nil {
 		db.Close()
 		return nil, err
+	}
+	// Sessions always have a human name (never ID-only): migrate old rows.
+	var hasSName int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('attendance_sessions') WHERE name='name'`).Scan(&hasSName); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if hasSName == 0 {
+		if _, err := db.Exec(`ALTER TABLE attendance_sessions ADD COLUMN name TEXT NOT NULL DEFAULT ''`); err != nil {
+			db.Close()
+			return nil, err
+		}
+		_, _ = db.Exec(`UPDATE attendance_sessions SET name=course||' · '||room WHERE name=''`)
 	}
 	return db, nil
 }

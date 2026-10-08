@@ -13,7 +13,14 @@
 <span class="navbar-text" id="whoami"></span>
 </div></nav>
 <div class="container appcol py-3">
-<div id="who" class="alert alert-warning">Not enrolled on THIS device/browser (keys live in localStorage). <a href="/student/enroll" class="alert-link">Enroll first</a>.</div>
+<div id="who" class="card" style="display:none"><div class="card-body">
+<h5 class="card-title">Enroll this device</h5>
+<p class="text-muted small">One step — your secure key is created and your QR appears.</p>
+<label class="form-label">Student ID</label><input id="esid" class="form-control" value="21BT0451">
+<label class="form-label mt-2">Student Name</label><input id="ename" class="form-control" value="Priya">
+<button class="btn btn-primary w-100 mt-3" id="ego">Enroll + show my QR</button>
+<div id="eout" class="mt-2"></div>
+</div></div>
 <div id="box" class="card" style="display:none">
 <div class="card-body">
 <div class="d-flex align-items-center gap-2">
@@ -57,7 +64,17 @@ function fail(m){const e=$('err');e.style.display='block';e.textContent='⚠ '+m
 const sid=localStorage.getItem('pq_sid'),did=localStorage.getItem('pq_did'),
       keyHex=localStorage.getItem('pq_key'),name=localStorage.getItem('pq_name');
 if(!sid||!did||!keyHex){
-  // keep the enroll warning visible, hide the QR card
+  $('who').style.display='block'; // inline enroll lives on this same page
+  $('ego').onclick=async()=>{
+    const r=await fetch('/api/student/enroll',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sid:$('esid').value.trim(),name:$('ename').value.trim()})});
+    const j=await r.json();
+    if(!r.ok){$('eout').innerHTML='<div class="alert alert-danger">'+(j.error||'enroll failed')+'</div>';return;}
+    localStorage.setItem('pq_sid',j.sid);localStorage.setItem('pq_name',j.name);
+    localStorage.setItem('pq_did',j.did);localStorage.setItem('pq_key',j.secret_key);
+    localStorage.setItem('pq_ctr_'+j.sid+'_'+j.did,'0');
+    location.reload();
+  };
 }else{
   $('who').style.display='none';$('box').style.display='block';
   $('nm').textContent=name||sid;$('ids').textContent=sid+' · Device '+did;

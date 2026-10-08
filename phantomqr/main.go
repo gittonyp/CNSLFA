@@ -30,6 +30,7 @@ func main() {
 	http.HandleFunc("/api/admin/revoke", func(w http.ResponseWriter, r *http.Request) { handleAdminRevoke(db, w, r) })
 	http.HandleFunc("/api/admin/reset", func(w http.ResponseWriter, r *http.Request) { handleAdminReset(db, w, r) })
 	http.HandleFunc("/api/session/open", func(w http.ResponseWriter, r *http.Request) { handleSessionOpen(db, w, r) })
+	http.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) { handleSessionList(db, w, r) })
 	http.HandleFunc("/api/session/close", func(w http.ResponseWriter, r *http.Request) { handleSessionClose(db, w, r) })
 	http.HandleFunc("/api/attendance/scan", func(w http.ResponseWriter, r *http.Request) { handleScan(db, w, r) })
 	http.HandleFunc("/api/dashboard", func(w http.ResponseWriter, r *http.Request) { handleDashboard(db, w, r) })
