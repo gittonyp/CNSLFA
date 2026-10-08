@@ -40,13 +40,30 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func staffOf(db *sql.DB, tok string) (staffID, deviceID string, ok bool) {
+func staffOf(db *sql.DB, tok string) (staffID, deviceID, role string, ok bool) {
 	if tok == "" {
-		return "", "", false
+		return "", "", "", false
 	}
 	now := time.Now().Unix()
-	err := db.QueryRow(`SELECT staff_id, device_id FROM staff_sessions WHERE token=? AND expires_at>?`, tok, now).Scan(&staffID, &deviceID)
-	return staffID, deviceID, err == nil
+	err := db.QueryRow(`SELECT s.staff_id, s.device_id, st.role FROM staff_sessions s JOIN staff st ON st.staff_id=s.staff_id WHERE s.token=? AND s.expires_at>?`, tok, now).Scan(&staffID, &deviceID, &role)
+	return staffID, deviceID, role, err == nil
+}
+
+// requireRole enforces RBAC: 401 when unauthenticated, 403 + FORBIDDEN event
+// when authenticated but the role is not allowed. errCode 0 means permitted.
+func requireRole(db *sql.DB, tok string, sessionID string, allowed ...string) (staffID, devID string, errCode int, errStatus, errMsg string) {
+	staffID, devID, role, ok := staffOf(db, tok)
+	if !ok {
+		logEvent(db, "INVALID_STAFF", "", sessionID, "missing/expired staff session token")
+		return "", "", 401, "INVALID_STAFF", "REMOTE SUBMISSION BLOCKED — Unauthorized scanner (staff login required)"
+	}
+	for _, a := range allowed {
+		if role == a {
+			return staffID, devID, 0, "", ""
+		}
+	}
+	logEvent(db, "FORBIDDEN", "", sessionID, "role '"+role+"' not permitted")
+	return "", "", 403, "FORBIDDEN", "REJECTED: Role '" + role + "' is not permitted here"
 }
 
 // verifyScan implements STEPS 1-14 in order. Returns (httpStatus, eventType, message, sid).
@@ -54,11 +71,10 @@ func verifyScan(db *sql.DB, r ScanReq) (int, string, string, string) {
 	t := r.Token
 	sid := t.SID
 
-	// STEP 1: staff session.
-	staffID, _, ok := staffOf(db, r.StaffSessionTok)
-	if !ok {
-		logEvent(db, "INVALID_STAFF", sid, r.SessionID, "missing/expired staff session token")
-		return 401, "INVALID_STAFF", "REMOTE SUBMISSION BLOCKED — Unauthorized scanner (staff login required)", sid
+	// STEP 1: staff session + role (only staff/admin may submit scans).
+	staffID, _, rcode, rstatus, rmsg := requireRole(db, r.StaffSessionTok, r.SessionID, "staff", "admin")
+	if rcode != 0 {
+		return rcode, rstatus, rmsg, sid
 	}
 	_ = staffID
 
@@ -250,7 +266,9 @@ func handleStaffLogin(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Unix()
 	_, _ = db.Exec(`INSERT INTO staff_sessions(token,staff_id,device_id,created_at,expires_at) VALUES(?,?,?,?,?)`,
 		tok, strings.TrimSpace(in.StaffID), "staff-device-04", now, now+8*3600)
-	writeJSON(w, 200, map[string]any{"ok": true, "staff_session_token": tok, "staff_id": strings.TrimSpace(in.StaffID), "device_id": "staff-device-04", "expires_in": 8 * 3600})
+	var role string
+	_ = db.QueryRow(`SELECT role FROM staff WHERE staff_id=?`, strings.TrimSpace(in.StaffID)).Scan(&role)
+	writeJSON(w, 200, map[string]any{"ok": true, "staff_session_token": tok, "staff_id": strings.TrimSpace(in.StaffID), "device_id": "staff-device-04", "role": role, "expires_in": 8 * 3600})
 }
 
 func handleStaffLogout(db *sql.DB, w http.ResponseWriter, r *http.Request) {
@@ -267,14 +285,14 @@ func handleStaffLogout(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 
 func handleStaffMe(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	tok := r.URL.Query().Get("staff_session_token")
-	staffID, devID, ok := staffOf(db, tok)
+	staffID, devID, role, ok := staffOf(db, tok)
 	if !ok {
 		writeJSON(w, 401, map[string]any{"ok": false})
 		return
 	}
 	var exp int64
 	_ = db.QueryRow(`SELECT expires_at FROM staff_sessions WHERE token=?`, tok).Scan(&exp)
-	writeJSON(w, 200, map[string]any{"ok": true, "staff_id": staffID, "device_id": devID, "expires_at": exp})
+	writeJSON(w, 200, map[string]any{"ok": true, "staff_id": staffID, "device_id": devID, "role": role, "expires_at": exp})
 }
 
 // handleAdminReset wipes demo attendance data (staff-only) so each demo run
@@ -288,8 +306,9 @@ func handleAdminReset(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		Staff string `json:"staff_session_token"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
-	if _, _, ok := staffOf(db, in.Staff); !ok {
-		writeJSON(w, 401, map[string]any{"error": "staff login required"})
+	_, _, code, errStatus, msg := requireRole(db, in.Staff, "", "admin")
+	if code != 0 {
+		writeJSON(w, code, map[string]any{"error": msg, "status": errStatus})
 		return
 	}
 	var a, n, e int64
@@ -326,9 +345,9 @@ func handleSessionOpen(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "bad JSON"})
 		return
 	}
-	staffID, devID, ok := staffOf(db, in.Staff)
-	if !ok {
-		writeJSON(w, 401, map[string]any{"error": "staff login required"})
+	staffID, devID, code, errStatus, msg := requireRole(db, in.Staff, "", "staff", "admin")
+	if code != 0 {
+		writeJSON(w, code, map[string]any{"error": msg, "status": errStatus})
 		return
 	}
 	if in.Course == "" || in.Room == "" {
@@ -352,8 +371,9 @@ func handleSessionClose(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		Staff     string `json:"staff_session_token"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
-	if _, _, ok := staffOf(db, in.Staff); !ok {
-		writeJSON(w, 401, map[string]any{"error": "staff login required"})
+	_, _, code, errStatus, msg := requireRole(db, in.Staff, in.SessionID, "staff", "admin")
+	if code != 0 {
+		writeJSON(w, code, map[string]any{"error": msg, "status": errStatus})
 		return
 	}
 	_, _ = db.Exec(`UPDATE attendance_sessions SET status='CLOSED' WHERE session_id=?`, in.SessionID)

@@ -123,23 +123,41 @@ func openDB(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	// Seed demo staff ST04/demo123 if missing.
-	var n int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM staff WHERE staff_id='ST04'`).Scan(&n); err != nil {
+	// ---- RBAC: staff.role in {'admin','staff'} (students are provers, not API callers) ----
+	var hasRole int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('staff') WHERE name='role'`).Scan(&hasRole); err != nil {
 		db.Close()
 		return nil, err
 	}
-	if n == 0 {
-		h, err := hashPassword("demo123")
-		if err != nil {
+	if hasRole == 0 {
+		// Existing rows backfill to 'staff' via the DEFAULT.
+		if _, err := db.Exec(`ALTER TABLE staff ADD COLUMN role TEXT NOT NULL DEFAULT 'staff'`); err != nil {
 			db.Close()
 			return nil, err
 		}
-		_, err = db.Exec(`INSERT INTO staff(staff_id,name,password_hash) VALUES('ST04','Demo Professor',?)`, h)
-		if err != nil {
-			db.Close()
-			return nil, err
+	}
+	seed := func(id, name, pw, role string) error {
+		var c int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM staff WHERE staff_id=?`, id).Scan(&c); err != nil {
+			return err
 		}
+		if c == 0 {
+			h, err := hashPassword(pw)
+			if err != nil {
+				return err
+			}
+			_, err = db.Exec(`INSERT INTO staff(staff_id,name,password_hash,role) VALUES(?,?,?,?)`, id, name, h, role)
+			return err
+		}
+		return nil
+	}
+	if err := seed("ST04", "Demo Professor", "demo123", "staff"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := seed("ADMIN", "Demo Admin", "admin123", "admin"); err != nil {
+		db.Close()
+		return nil, err
 	}
 	return db, nil
 }

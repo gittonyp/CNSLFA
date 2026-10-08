@@ -8,7 +8,11 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -214,5 +218,50 @@ func TestSecondStudentAndConcurrentDuplicate(t *testing.T) {
 	_ = f.db.QueryRow(`SELECT COUNT(*) FROM attendance WHERE sid='21BT0452' AND session_id='S-T3'`).Scan(&n)
 	if n != 1 {
 		t.Fatalf("concurrent attendance rows=%d results=%v", n, res)
+	}
+}
+
+func TestRBAC(t *testing.T) {
+	f, done := setupFix(t)
+	defer done()
+	now := time.Now().Unix()
+	_, err := f.db.Exec(`INSERT INTO staff_sessions(token,staff_id,device_id,created_at,expires_at) VALUES('admintok-1','ADMIN','admin-dev',?,?)`, now, now+3600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(tok string) (int, string) {
+		body := `{"staff_session_token":"` + tok + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/reset", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		handleAdminReset(f.db, rec, req)
+		var j map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &j)
+		return rec.Code, string(rec.Body.Bytes())
+	}
+	// staff must NOT reset
+	if code, b := call(f.staffTok); code != 403 || !strings.Contains(b, "FORBIDDEN") {
+		t.Fatalf("staff reset: got %d %s", code, b)
+	}
+	// anonymous must NOT reset
+	if code, _ := call(""); code != 401 {
+		t.Fatalf("anon reset: got %d", code)
+	}
+	// admin CAN reset
+	if code, b := call("admintok-1"); code != 200 || !strings.Contains(b, `"ok":true`) {
+		t.Fatalf("admin reset: got %d %s", code, b)
+	}
+	// admin CAN scan
+	a := tok(f.keyA, "21BT0451", "d7f3", 1, time.Now().Unix(), "n-rbac-0000000000000001")
+	if _, st := scan(f, a, "admintok-1", ""); st != "ACCEPTED" {
+		t.Fatalf("admin scan: got %s", st)
+	}
+	// me reports roles
+	for tok, want := range map[string]string{f.staffTok: "staff", "admintok-1": "admin"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/staff/me?staff_session_token="+tok, nil)
+		rec := httptest.NewRecorder()
+		handleStaffMe(f.db, rec, req)
+		if !strings.Contains(rec.Body.String(), `"role":"`+want+`"`) {
+			t.Fatalf("me(%s): %s", want, rec.Body.String())
+		}
 	}
 }

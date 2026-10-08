@@ -58,9 +58,11 @@ equivalent) so attackers can't learn the MAC byte-by-byte from timing.
 
 ## 9. Staff scanner auth / 10. Replay / 11. Tamper / 12. Offline queue
 
-- Staff login `ST04 / demo123` → 8h session token; every scan needs it.
-- Verify order: staff → session exists → OPEN → student/device lookup → binding →
-  HMAC (constant-time) → timestamp → counter → nonce → uniqueness → accept in one tx.
+- Staff login `ST04 / demo123` (role **staff**), admin login `ADMIN / admin123`
+  (role **admin**) → 8h session token; every scan needs it.
+- Verify order: staff session + **role** → session exists → OPEN → student/device
+  lookup → binding → HMAC (constant-time) → timestamp → counter → nonce →
+  uniqueness → accept in one tx.
 - Scanner keeps `localStorage` queue (`{token, session_id, scanned_at}`) when offline,
   auto-uploads on reconnect. `scanned_at` is informational only — validity is always
   evaluated against **server time on arrival** (documented trust limit).
@@ -84,11 +86,26 @@ No system sqlite needed (pure-Go driver). No npm/build step (vanilla HTML + vend
 | Landing | `/` |
 | Student enroll | `/student/enroll` |
 | Student QR | `/student` |
-| Staff login | `/staff/login` (ST04 / demo123) |
+| Staff login | `/staff/login` (ST04 / demo123 = staff, ADMIN / admin123 = admin) |
 | Session | `/staff/session` |
 | Scanner | `/staff/scanner` |
 | Dashboard | `/dashboard` |
 | Security Lab | `/attacks` |
+
+## RBAC matrix
+
+Students are provers (device HMAC key), not API callers — roles govern callers:
+
+| Endpoint | admin | staff | anonymous |
+|---|---|---|---|
+| enroll (self-service kiosk) | ✓ | ✓ | ✓ public by design |
+| session open/close | ✓ | ✓ | ✗ 401 |
+| attendance scan | ✓ | ✓ | ✗ 401 |
+| admin reset | ✓ | ✗ 403 FORBIDDEN | ✗ 401 |
+| dashboard feed | ✓ | ✓ | ✓ read-only |
+
+Wrong-role denials are logged as `FORBIDDEN` security events. `staff.role`
+migrates automatically (`ALTER TABLE` + default `'staff'`) on old databases.
 
 ## Tests
 

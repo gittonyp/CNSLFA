@@ -9,7 +9,7 @@
 <label>Password</label><input id="pw" type="password" value="demo123">
 <button class="btn" id="go" style="margin-top:12px">Login</button>
 <button class="btn ghost" id="lo" style="margin-top:8px">Logout this browser</button>
-<button class="btn danger" id="rs" style="margin-top:8px">Reset demo data</button>
+<button class="btn danger" id="rs" style="margin-top:8px;display:none">Reset demo data (admin)</button>
 <div id="out" style="margin-top:10px"></div></div>
 <script>
 const $=id=>document.getElementById(id);
@@ -19,7 +19,9 @@ $('go').onclick=async()=>{
   const j=await r.json();
   if(!r.ok||!j.ok){$('out').innerHTML='<span class="bad">Login failed: '+(j.error||'unknown')+'</span>';return;}
   localStorage.setItem('pq_staff',j.staff_session_token);localStorage.setItem('pq_staff_id',j.staff_id);
-  $('out').innerHTML='<span class="pill live">● Logged in as '+j.staff_id+'</span><div class="mono" style="margin-top:8px">staff session stored in this browser (bcrypt-verified, 8h expiry).<br><a style="color:#0095f6" href="/staff/session">→ Open attendance session</a> · <a style="color:#0095f6" href="/staff/scanner">→ Scanner</a></div>';
+  localStorage.setItem('pq_role',j.role||'staff');
+  if(j.role==='admin')$('rs').style.display='';
+  $('out').innerHTML='<span class="pill live">● Logged in as '+j.staff_id+' ('+(j.role||'staff')+')</span><div class="mono" style="margin-top:8px">staff session stored in this browser (bcrypt-verified, 8h expiry).<br><a style="color:#0095f6" href="/staff/session">→ Open attendance session</a> · <a style="color:#0095f6" href="/staff/scanner">→ Scanner</a></div>';
 };
 $('lo').onclick=async()=>{
   const t=localStorage.getItem('pq_staff')||'';
@@ -34,6 +36,16 @@ $('rs').onclick=async()=>{
   const j=await r.json();
   $('out').innerHTML=r.ok?'<span class="pill live">● Demo reset</span><div class="mono" style="margin-top:8px">'+JSON.stringify(j.cleared)+'</div>':'<span class="bad">'+JSON.stringify(j)+'</span>';
 };
+(async()=>{ // session guard: show who is logged in, reveal admin tools only for admin
+  const t=localStorage.getItem('pq_staff')||'';if(!t)return;
+  try{
+    const r=await fetch('/api/staff/me?staff_session_token='+encodeURIComponent(t));const j=await r.json();
+    if(!r.ok||!j.ok){localStorage.removeItem('pq_staff');localStorage.removeItem('pq_role');return;}
+    localStorage.setItem('pq_role',j.role||'staff');
+    $('out').innerHTML='<span class="pill live">● '+j.staff_id+' ('+j.role+')</span><div class="dim" style="margin-top:6px">session valid · expires '+new Date(j.expires_at*1000).toLocaleTimeString()+'</div>';
+    if(j.role==='admin')$('rs').style.display='';
+  }catch(e){}
+})();
 </script></div>
 <nav class="tabbar">
 <a href="/" data-p="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg><span>Home</span></a>
