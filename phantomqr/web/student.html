@@ -46,7 +46,7 @@ if(!sid||!did||!keyHex){
   const useSubtle=!!(window.crypto&&crypto.subtle);
   $('backend').textContent='crypto backend: '+(useSubtle?'WebCrypto (secure context)':'vendored JS HMAC (insecure context — same HMAC-SHA256 math)');
   let subtleKey=null;
-  if(useSubtle){crypto.subtle.importKey('raw',keyBytes,'HMAC',{name:'HMAC',hash:'SHA-256'},false,['sign']).then(k=>subtleKey=k).catch(e=>fail('key import: '+e));}
+  if(useSubtle){crypto.subtle.importKey('raw',keyBytes,{name:'HMAC',hash:'SHA-256'},false,['sign']).then(k=>subtleKey=k).catch(e=>fail('key import: '+e));}
   async function hmacHex(msg){
     if(useSubtle){
       if(!subtleKey)throw new Error('crypto key not ready yet');
