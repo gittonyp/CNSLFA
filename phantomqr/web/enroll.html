@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Enroll — PhantomQR</title><link rel="stylesheet" href="/web/style.css"></head>
+<body><div class="wrap">
+<div class="brand">PHANTOMQR</div><h1>Student enrollment</h1>
+<div class="nav"><a href="/">Home</a><a href="/student">My QR</a><a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a></div>
+<div class="card">
+<label>Student ID</label><input id="sid" value="21BT0451">
+<label>Student Name</label><input id="name" value="Priya">
+<button class="btn" id="go" style="margin-top:14px">Enroll this device</button>
+<div id="out" style="margin-top:12px"></div>
+</div>
+<div class="card" style="margin-top:12px"><h2>Prototype limitation</h2>
+<p class="dim">Key is stored in this browser's localStorage. Production must use Android Keystore / iOS Keychain (non-exportable). We never show the full key in normal UI — only a fingerprint.</p></div>
+<script>
+const $=id=>document.getElementById(id);
+$('go').onclick=async()=>{
+  const sid=$('sid').value.trim(), name=$('name').value.trim();
+  const r=await fetch('/api/student/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid,name})});
+  const j=await r.json();
+  if(!r.ok){$('out').innerHTML='<span class="bad">'+JSON.stringify(j)+'</span>';return;}
+  // store device credentials locally (prototype storage)
+  localStorage.setItem('pq_sid',j.sid);localStorage.setItem('pq_name',j.name);
+  localStorage.setItem('pq_did',j.did);localStorage.setItem('pq_key',j.secret_key);
+  if(!localStorage.getItem('pq_ctr_'+j.sid+'_'+j.did))localStorage.setItem('pq_ctr_'+j.sid+'_'+j.did,'0');
+  $('out').innerHTML='<span class="pill live">● Device Enrolled</span><div class="mono" style="margin-top:8px">sid: '+j.sid+'<br>name: '+j.name+'<br>did: '+j.did+'<br>key fingerprint (SHA-256[0:12]): '+j.key_fp+'<br><br><a style="color:#38e1ff" href="/student">→ Open My QR</a></div>';
+};
+</script></div></body></html>

@@ -1,0 +1,128 @@
+package main
+
+// SQLite store. Pure-Go driver (modernc.org/sqlite) so no system sqlite3 needed.
+// UNIQUE(nonce) and UNIQUE(sid, session_id) are enforced by the DB itself,
+// so two scanners racing on the same student can only succeed once.
+
+import (
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"time"
+
+	_ "modernc.org/sqlite"
+)
+
+const schema = `
+CREATE TABLE IF NOT EXISTS students(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sid TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS devices(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  did TEXT UNIQUE NOT NULL,
+  sid TEXT NOT NULL,
+  secret_key TEXT NOT NULL,
+  last_seen_counter INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  revoked_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS staff(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  staff_id TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  password_hash TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS staff_sessions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT UNIQUE NOT NULL,
+  staff_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS attendance_sessions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT UNIQUE NOT NULL,
+  course TEXT NOT NULL,
+  room TEXT NOT NULL,
+  staff_id TEXT NOT NULL,
+  staff_device_id TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'OPEN',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS attendance(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sid TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  scanned_at INTEGER NOT NULL,
+  counter INTEGER NOT NULL,
+  nonce TEXT NOT NULL,
+  UNIQUE(sid, session_id)
+);
+CREATE TABLE IF NOT EXISTS nonces(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sid TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  used_at INTEGER NOT NULL,
+  UNIQUE(nonce)
+);
+CREATE TABLE IF NOT EXISTS security_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,
+  sid TEXT,
+  session_id TEXT,
+  details TEXT,
+  created_at INTEGER NOT NULL
+);
+`
+
+func hashPassword(pw string) string {
+	// Prototype-grade password hashing (salted SHA-256).
+	// Production: bcrypt/scrypt/argon2. Documented in README limitations.
+	h := sha256.Sum256([]byte("phantomqr-demo-salt::" + pw))
+	return hex.EncodeToString(h[:])
+}
+
+func openDB(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1) // SQLite: single writer avoids "database is locked".
+	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+		return nil, err
+	}
+	// Seed demo staff ST04/demo123 if missing.
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM staff WHERE staff_id='ST04'`).Scan(&n); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if n == 0 {
+		_, err = db.Exec(`INSERT INTO staff(staff_id,name,password_hash) VALUES('ST04','Demo Professor',?)`, hashPassword("demo123"))
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+	return db, nil
+}
+
+func logEvent(db *sql.DB, typ, sid, session, details string) {
+	_, _ = db.Exec(`INSERT INTO security_events(event_type,sid,session_id,details,created_at) VALUES(?,?,?,?,?)`,
+		typ, nullable(sid), nullable(session), details, time.Now().Unix())
+}
+
+func nullable(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}

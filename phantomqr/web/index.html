@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PhantomQR — Secure Classroom Authentication</title><link rel="stylesheet" href="/web/style.css"></head>
+<body><div class="wrap">
+<div class="brand">PHANTOMQR</div>
+<h1>Cryptographically Secure<br>Classroom Authentication</h1>
+<p class="tag">"Possession of the QR is not possession of the identity."</p>
+<div class="card"><h2>Architecture — the direction flip</h2>
+<pre class="mono">STUDENT (holds per-device key)
+  ↓  dynamic signed QR every 15s  {sid,did,ctr,ts,nonce,mac}
+PROFESSOR SCANNER (dumb camera, staff login only)
+  ↓  POST /api/attendance/scan {token, session_id, staff_session}
+SERVER (verifies HMAC, session, ts, counter, nonce, uniqueness)
+  ↓
+ATTENDANCE (ACCEPTED / blocked with reason)</pre>
+<p class="dim">Student never submits attendance. Professor device is the only writer. Server never trusts client time.</p></div>
+<div class="grid g3" style="margin-top:14px">
+<div class="card"><h2>✓ HMAC-SHA256</h2><p class="dim">Per-device 32-byte key. Constant-time compare. Tamper-evident.</p></div>
+<div class="card"><h2>✓ Dynamic QR</h2><p class="dim">15s rotation, 60s server validity. Screenshot dies fast.</p></div>
+<div class="card"><h2>✓ Replay protection</h2><p class="dim">Monotonic counter + once-only nonce + UNIQUE(sid,session).</p></div>
+<div class="card"><h2>✓ Tamper detection</h2><p class="dim">sid/did/ctr/ts/nonce covered by MAC. Edit anything → INVALID_MAC.</p></div>
+<div class="card"><h2>✓ Staff-only submission</h2><p class="dim">Anonymous POST rejected. Remote student at home has nothing to call.</p></div>
+<div class="card"><h2>✓ Offline queue</h2><p class="dim">Scanner queues scans in localStorage, auto-uploads on reconnect.</p></div>
+</div>
+<div class="nav">
+<a href="/student/enroll">Student Portal</a><a href="/staff/login">Staff Console</a>
+<a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a><a href="/attacks">Security Lab</a>
+</div>
+<p class="dim">Demo login — Staff ID <b>ST04</b> / password <b>demo123</b>. Prototype: browser key storage is NOT hardware-backed (see README).</p>
+</div></body></html>

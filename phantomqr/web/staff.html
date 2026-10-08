@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Staff — PhantomQR</title><link rel="stylesheet" href="/web/style.css"></head>
+<body><div class="wrap">
+<div class="brand">PHANTOMQR</div><h1>Staff console</h1>
+<div class="nav"><a href="/">Home</a><a href="/staff/session">Sessions</a><a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a></div>
+<div class="card"><h2>Login (prototype: fixed demo account)</h2>
+<label>Staff ID</label><input id="sid" value="ST04">
+<label>Password</label><input id="pw" type="password" value="demo123">
+<button class="btn" id="go" style="margin-top:12px">Login</button>
+<div id="out" style="margin-top:10px"></div></div>
+<script>
+const $=id=>document.getElementById(id);
+$('go').onclick=async()=>{
+  const r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({staff_id:$('sid').value,password:$('pw').value})});
+  const j=await r.json();
+  if(!r.ok||!j.ok){$('out').innerHTML='<span class="bad">Login failed: '+(j.error||'unknown')+'</span>';return;}
+  localStorage.setItem('pq_staff',j.staff_session_token);localStorage.setItem('pq_staff_id',j.staff_id);
+  $('out').innerHTML='<span class="pill live">● Logged in as '+j.staff_id+'</span><div class="mono" style="margin-top:8px">staff session stored in this browser.<br><a style="color:#38e1ff" href="/staff/session">→ Open attendance session</a> · <a style="color:#38e1ff" href="/staff/scanner">→ Scanner</a></div>';
+};
+</script></div></body></html>

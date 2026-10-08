@@ -1,0 +1,58 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security Lab — PhantomQR</title><link rel="stylesheet" href="/web/style.css"></head>
+<body><div class="wrap">
+<div class="brand">PHANTOMQR SECURITY LAB</div><h1>Attack demonstrations</h1>
+<p class="tag">Every button calls the real <span class="mono">POST /api/attendance/scan</span>. Nothing is faked.</p>
+<div class="nav"><a href="/">Home</a><a href="/student">My QR</a><a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a></div>
+<div id="need" class="card" style="display:none"><span class="bad">Enroll a student, login staff (ST04/demo123), and open a session first. See README demo script.</span></div>
+<div class="grid g2" id="lab"></div>
+<script>
+const hex=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(x=>x.toString(16).padStart(2,'0')).join('');
+const hex2bytes=h=>new Uint8Array(h.match(/../g).map(b=>parseInt(b,16)));
+const b2hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+async function hmac(keyHex,msg){
+  const k=await crypto.subtle.importKey('raw',hex2bytes(keyHex),'HMAC',{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  return b2hex(await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(msg)));
+}
+async function scan(token,staffOverride){
+  const r=await fetch('/api/attendance/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({token,session_id:localStorage.getItem('pq_session')||'',
+      staff_session_token:staffOverride!==undefined?staffOverride:(localStorage.getItem('pq_staff')||''),
+      scanned_at:Math.floor(Date.now()/1000)})});
+  return {code:r.status,body:await r.json()};
+}
+async function validToken(){
+  const sid=localStorage.getItem('pq_sid'),did=localStorage.getItem('pq_did'),key=localStorage.getItem('pq_key');
+  const ck='pq_ctr_'+sid+'_'+did;const ctr=parseInt(localStorage.getItem(ck)||'0',10)+1;localStorage.setItem(ck,String(ctr));
+  const ts=Math.floor(Date.now()/1000),nonce=hex(16);
+  const mac=await hmac(key,[sid,did,ctr,ts,nonce].join('|'));
+  return {sid,did,ctr,ts,nonce,mac};
+}
+const attacks=[
+ {id:'replay',t:'Attack 1 — Screenshot / old QR replay',d:'Submit one valid token twice. First ACCEPTED, second blocked by nonce/counter.',
+  run:async()=>{const a=await validToken();const r1=await scan(a);const r2=await scan(a);
+    return '1st: '+r1.body.status+' — '+r1.body.message+'\n2nd: '+r2.body.status+' — '+r2.body.message+(r2.body.status.includes('REPLAY')||r2.body.status.includes('DUPLICATE')?'\n✓ REPLAY ATTACK BLOCKED':'\n✕ UNEXPECTED');}},
+ {id:'tamper',t:'Attack 2 — QR payload tampering',d:'Take valid token, bump counter without re-signing (any field edit works). Must fail INVALID_MAC.',
+  run:async()=>{const a=await validToken();a.ctr=a.ctr+100;const r=await scan(a);
+    return 'Result: '+r.body.status+' — '+r.body.message+(r.body.status==='INVALID_MAC'?'\n✓ TAMPERING DETECTED':'\n✕ UNEXPECTED');}},
+ {id:'fake',t:'Attack 3 — Fake QR without secret',d:'Attacker invents token + random MAC. Must fail INVALID_MAC.',
+  run:async()=>{const sid=localStorage.getItem('pq_sid')||'21BT0451',did=localStorage.getItem('pq_did')||'d7f3';
+    const a={sid,did,ctr:99999,ts:Math.floor(Date.now()/1000),nonce:hex(16),mac:hex(32)};const r=await scan(a);
+    return 'Result: '+r.body.status+' — '+r.body.message+(r.body.status==='INVALID_MAC'?'\n✓ FORGED TOKEN BLOCKED':'\n✕ UNEXPECTED');}},
+ {id:'dup',t:'Attack 4 — Duplicate attendance',d:'Same student, two fresh tokens, same session. Second blocked DUPLICATE_ATTENDANCE.',
+  run:async()=>{const a=await validToken();const r1=await scan(a);const b=await validToken();const r2=await scan(b);
+    return '1st: '+r1.body.status+'\n2nd: '+r2.body.status+' — '+r2.body.message+(r2.body.status==='DUPLICATE_ATTENDANCE'||r2.body.status.includes('REPLAY')?'\n✓ ALREADY MARKED PRESENT (duplicate blocked)':'\n(note: if 1st was already duplicate, enroll fresh student and retry)');}},
+ {id:'remote',t:'Attack 5 — Remote / unauthorized submission',d:'POST with no (or bogus) staff session. Must fail INVALID_STAFF even with a valid token.',
+  run:async()=>{const a=await validToken();const r=await scan(a,'');
+    return 'No-creds result: '+r.body.status+' — '+r.body.message+(r.body.status==='INVALID_STAFF'?'\n✓ REMOTE SUBMISSION BLOCKED':'\n✕ UNEXPECTED');}},
+];
+const lab=document.getElementById('lab');
+attacks.forEach(a=>{
+  const d=document.createElement('div');d.className='card';
+  d.innerHTML='<h2>'+a.t+'</h2><p class="dim">'+a.d+'</p><button class="btn danger">RUN ATTACK</button><pre class="mono" style="margin-top:8px">not run yet</pre>';
+  d.querySelector('button').onclick=async ev=>{ev.target.textContent='RUNNING…';try{d.querySelector('pre').textContent=await a.run();}catch(e){d.querySelector('pre').textContent='error: '+e;}ev.target.textContent='RUN ATTACK';};
+  lab.appendChild(d);
+});
+if(!localStorage.getItem('pq_sid')||!localStorage.getItem('pq_staff')||!localStorage.getItem('pq_session'))
+  document.getElementById('need').style.display='block';
+</script></div></body></html>

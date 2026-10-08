@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Session — PhantomQR</title><link rel="stylesheet" href="/web/style.css"></head>
+<body><div class="wrap">
+<div class="brand">PHANTOMQR</div><h1>Class session</h1>
+<div class="nav"><a href="/">Home</a><a href="/staff/login">Staff login</a><a href="/staff/scanner">Scanner</a><a href="/dashboard">Security Center</a></div>
+<div class="card">
+<label>Course</label><input id="c" value="CNS-601">
+<label>Room</label><input id="r" value="A-204">
+<div class="grid g2"><div><label>Start</label><input id="s" value="10:00"></div><div><label>End</label><input id="e" value="10:10"></div></div>
+<button class="btn" id="go" style="margin-top:12px">OPEN ATTENDANCE SESSION</button>
+<div id="out" style="margin-top:10px"></div></div>
+<script>
+const $=id=>document.getElementById(id);
+$('go').onclick=async()=>{
+  const staff=localStorage.getItem('pq_staff')||'';
+  if(!staff){$('out').innerHTML='<span class="bad">Login first at /staff/login (demo ST04/demo123).</span>';return;}
+  const r=await fetch('/api/session/open',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({course:$('c').value,room:$('r').value,start:$('s').value,end:$('e').value,staff_session_token:staff})});
+  const j=await r.json();
+  if(!r.ok){$('out').innerHTML='<span class="bad">'+JSON.stringify(j)+'</span>';return;}
+  localStorage.setItem('pq_session',j.session_id);
+  $('out').innerHTML='<span class="pill live">● Session '+j.session_id+' OPEN</span><div class="mono" style="margin-top:8px">session_id: '+j.session_id+'<br><a style="color:#38e1ff" href="/staff/scanner">→ Open scanner</a></div>';
+};
+</script></div></body></html>

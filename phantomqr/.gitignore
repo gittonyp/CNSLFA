@@ -1,0 +1,4 @@
+# build artifacts / local runtime state — never commit
+/phantomqr
+*.db
+server.log

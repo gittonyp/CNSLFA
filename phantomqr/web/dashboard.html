@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security Center — PhantomQR</title><link rel="stylesheet" href="/web/style.css"></head>
+<body><div class="wrap">
+<div class="brand">PHANTOMQR SECURITY CENTER</div>
+<div class="nav"><a href="/">Home</a><a href="/staff/scanner">Scanner</a><a href="/attacks">Security Lab</a></div>
+<div class="card"><div class="grid g3">
+<div><div class="dim">Active Session</div><b id="sess">–</b><div class="dim" id="cr"></div></div>
+<div><div class="dim">Attendance</div><h2><span class="live" id="p">0</span> / <span id="e">0</span> <span class="dim">(<span id="pend">0</span> pending)</span></h2></div>
+<div><div class="dim">Security</div><div id="sec" class="mono">–</div></div>
+</div></div>
+<div class="grid g2" style="margin-top:12px">
+<div class="card"><h2>Live security event feed</h2><div class="feed" id="feed"></div></div>
+<div class="card"><h2>Attendance</h2><div class="feed" id="att"></div></div>
+</div></div>
+<script>
+async function load(){
+  const sid=localStorage.getItem('pq_session')||'';
+  const r=await fetch('/api/dashboard?session_id='+encodeURIComponent(sid));const j=await r.json();
+  document.getElementById('sess').textContent=j.session||'(none — open a session)';
+  document.getElementById('cr').textContent=(j.course||'')+' '+(j.room||'')+' '+(j.status||'');
+  document.getElementById('p').textContent=j.present;document.getElementById('e').textContent=j.expected;
+  document.getElementById('pend').textContent=j.pending;
+  document.getElementById('sec').textContent='replays='+j.replays+' tamper='+j.tampering+' bad-device='+j.invalidDevices+' unauth='+j.unauth;
+  const col=t=>t==='ACCEPTED'?'ok-b':(t==='INVALID_MAC'||t==='INVALID_STAFF'||t.startsWith('REPLAY')?'bad-b':'warn-b');
+  const tm=t=>new Date(t*1000).toLocaleTimeString();
+  document.getElementById('feed').innerHTML=(j.feed||[]).map(e=>'<div class="row '+col(e.type)+'"><span><b>'+e.type+'</b> '+(e.sid||'')+'</span><span class="dim">'+tm(e.at)+'</span></div>').join('')||'<span class="dim">No events yet.</span>';
+  document.getElementById('att').innerHTML=(j.attendance||[]).map(a=>'<div class="row ok-b"><span>✓ '+a.sid+' <span class="dim">ctr='+a.ctr+'</span></span><span class="dim">'+tm(a.at)+'</span></div>').join('')||'<span class="dim">Nobody marked yet.</span>';
+}
+load();setInterval(load,3000);
+</script></div></body></html>
