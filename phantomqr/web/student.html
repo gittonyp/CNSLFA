@@ -85,5 +85,29 @@ if(!sid||!did||!keyHex){
   };
   setInterval(()=>{if(!started)return;left--;if(left<=0){fresh();return;}$('cd').textContent=left;$('cd2').textContent=left;},1000);
   const iv=setInterval(()=>{if(useSubtle&&!subtleKey)return;clearInterval(iv);started=true;fresh();},200);
+  // WiFi presence heartbeat: proves this device is on the classroom network.
+  // Server records our egress IP (RemoteAddr) and compares it with the
+  // scanner's egress IP at scan time (same /24 => in range). local_ip via
+  // WebRTC is a best-effort hint; the egress-IP comparison is authoritative.
+  let _localIP='';
+  try{
+    const pc=new RTCPeerConnection({iceServers:[]});
+    pc.createDataChannel('x');
+    pc.onicecandidate=e=>{
+      if(e.candidate&&e.candidate.candidate){
+        const m=/([0-9]{1,3}(\.[0-9]{1,3}){3})/.exec(e.candidate.candidate);
+        if(m)_localIP=m[1];
+      }
+    };
+    pc.createOffer().then(o=>pc.setLocalDescription(o)).catch(()=>{});
+    setTimeout(()=>{try{pc.close();}catch(_){}} ,2000);
+  }catch(_){}
+  async function heartbeat(){
+    try{
+      await fetch('/api/presence/heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({sid,local_ip:_localIP||''})});
+    }catch(_){}
+  }
+  heartbeat();setInterval(heartbeat,15000);
 }
 </script></div></body></html>

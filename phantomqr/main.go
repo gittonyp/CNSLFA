@@ -27,6 +27,8 @@ func main() {
 	http.HandleFunc("/api/session/open", func(w http.ResponseWriter, r *http.Request) { handleSessionOpen(db, w, r) })
 	http.HandleFunc("/api/session/close", func(w http.ResponseWriter, r *http.Request) { handleSessionClose(db, w, r) })
 	http.HandleFunc("/api/attendance/scan", func(w http.ResponseWriter, r *http.Request) { handleScan(db, w, r) })
+	http.HandleFunc("/api/presence/heartbeat", func(w http.ResponseWriter, r *http.Request) { handlePresenceHeartbeat(db, w, r) })
+	http.HandleFunc("/api/presence/check", func(w http.ResponseWriter, r *http.Request) { handlePresenceCheck(db, w, r) })
 	http.HandleFunc("/api/dashboard", func(w http.ResponseWriter, r *http.Request) { handleDashboard(db, w, r) })
 	http.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"ok": true}) })
 

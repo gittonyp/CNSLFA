@@ -48,8 +48,17 @@ func staffOf(db *sql.DB, tok string) (staffID, deviceID string, ok bool) {
 	return staffID, deviceID, err == nil
 }
 
-// verifyScan implements STEPS 1-14 in order. Returns (httpStatus, eventType, message, sid).
+// verifyScan is the unit-test entrypoint (no network view -> skips WiFi
+// proximity so the crypto/counter/nonce tests stay hermetic).
 func verifyScan(db *sql.DB, r ScanReq) (int, string, string, string) {
+	return verifyScanWithProximity(db, r, "")
+}
+
+// verifyScanWithProximity implements STEPS 1-14 in order plus STEP 13.5
+// (WiFi same-network presence). scannerIP is the scanner's egress IP as
+// seen by the server (ClientIPFromRemoteAddr). Empty means "no network
+// view" -> proximity is skipped (tests, offline replay of old captures).
+func verifyScanWithProximity(db *sql.DB, r ScanReq, scannerIP string) (int, string, string, string) {
 	t := r.Token
 	sid := t.SID
 
@@ -131,6 +140,16 @@ func verifyScan(db *sql.DB, r ScanReq) (int, string, string, string) {
 	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM attendance WHERE sid=? AND session_id=?)`, t.SID, r.SessionID).Scan(&dup); err == nil && dup {
 		logEvent(db, "DUPLICATE_ATTENDANCE", sid, r.SessionID, "already present")
 		return 409, "DUPLICATE_ATTENDANCE", "REJECTED: Already marked present for this session", sid
+	}
+	// STEP 13.5: WiFi same-network presence. Runs AFTER crypto/freshness so
+	// forged tokens fail earlier with INVALID_MAC, and only fresh tokens from
+	// enrolled devices pay for the proximity lookup. Skipped when the caller
+	// has no network view (scannerIP == "" — unit tests).
+	if scannerIP != "" {
+		if ok, reason := CheckPresenceForScan(t.SID, scannerIP); !ok {
+			logEvent(db, "PROXIMITY_FAIL", sid, r.SessionID, "student not in scanner WiFi range: "+reason)
+			return 403, "PROXIMITY_FAIL", "REJECTED: Student not in scanner WiFi range ("+reason+"). Keep the student page open on classroom WiFi.", sid
+		}
 	}
 	// STEP 14: accept — single transaction so nonce/counter/attendance move together.
 	tx, err := db.Begin()
@@ -297,7 +316,8 @@ func handleScan(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t0 := time.Now()
-	code, status, msg, sid := verifyScan(db, in)
+	scannerIP := ClientIPFromRemoteAddr(r.RemoteAddr)
+	code, status, msg, sid := verifyScanWithProximity(db, in, scannerIP)
 	writeJSON(w, code, map[string]any{
 		"success": status == "ACCEPTED", "status": status,
 		"message": msg, "student": sid, "session": in.SessionID,
